@@ -1,10 +1,12 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider } from './contexts/AuthContext'
 import ProtectedRoute from './components/ProtectedRoute'
-import Login from './pages/Login'
+import Login      from './pages/Login'
 import AdminLayout from './pages/AdminLayout'
-import Stores from './pages/Stores'
+import Stores     from './pages/Stores'
 import Facilities from './pages/Facilities'
+import Bookings   from './pages/Bookings'
+import Settings   from './pages/Settings'
 
 export default function App() {
   return (
@@ -21,8 +23,10 @@ export default function App() {
             }
           >
             <Route index element={<Navigate to="/admin/stores" replace />} />
-            <Route path="stores" element={<Stores />} />
+            <Route path="stores"     element={<Stores />} />
             <Route path="facilities" element={<Facilities />} />
+            <Route path="bookings"   element={<Bookings />} />
+            <Route path="settings"   element={<Settings />} />
           </Route>
           <Route path="*" element={<Navigate to="/admin" replace />} />
         </Routes>

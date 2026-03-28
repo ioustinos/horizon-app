@@ -1,6 +1,8 @@
 // sync-bookings.js
-// Scheduled job: syncs bookings from WebHotelier and/or HostHub for all enabled stores.
-// Can also be triggered manually via POST /api/sync-bookings?store_id=xxx
+// Scheduled: runs every 5 min. Syncs each facility whose last_synced_at
+// is older than the settings.sync_interval_minutes threshold.
+// Can also be triggered manually: POST /api/sync-bookings
+// (force-sync.js handles per-facility manual triggers from the admin UI)
 
 import { createClient } from '@supabase/supabase-js';
 
@@ -9,28 +11,27 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_KEY
 );
 
-export const handler = async (event) => {
-  const targetStoreId = event.queryStringParameters?.store_id || null;
+export const handler = async () => {
+  // Load settings
+  const { data: settingsRows } = await supabase.from('settings').select('key,value');
+  const cfg = Object.fromEntries((settingsRows || []).map(r => [r.key, r.value]));
+  const intervalMinutes  = parseInt(cfg.sync_interval_minutes || '60', 10);
+  const lookbackDays     = parseInt(cfg.sync_lookback_days    || '30', 10);
+  const forwardDays      = parseInt(cfg.sync_forward_days     || '90', 10);
+  const cutoff           = new Date(Date.now() - intervalMinutes * 60 * 1000).toISOString();
 
-  // Load all enabled stores (or a specific one)
-  let query = supabase
-    .from('stores')
+  // Load facilities due for sync (never synced, or synced before cutoff)
+  const { data: facilities, error } = await supabase
+    .from('facilities')
     .select('*')
-    .or('webhotelier_enabled.eq.true,hosthub_enabled.eq.true');
+    .or(`last_synced_at.is.null,last_synced_at.lt.${cutoff}`);
 
-  if (targetStoreId) query = query.eq('store_id', targetStoreId);
-
-  const { data: stores, error } = await query;
   if (error) return { statusCode: 500, body: JSON.stringify({ error: error.message }) };
 
   const results = [];
-  for (const store of stores) {
-    if (store.webhotelier_enabled) {
-      results.push(await syncWebHotelier(store));
-    }
-    if (store.hosthub_enabled) {
-      results.push(await syncHostHub(store));
-    }
+  for (const facility of (facilities || [])) {
+    const result = await syncFacility(facility, { lookbackDays, forwardDays });
+    results.push(result);
   }
 
   return {
@@ -39,145 +40,135 @@ export const handler = async (event) => {
   };
 };
 
-// ─── WebHotelier ───────────────────────────────────────────────────────────────
-async function syncWebHotelier(store) {
-  const logId = await startLog(store.store_id, 'webhotelier');
-  const dateFrom = offsetDate(-store.sync_days_lookback);
-  const dateTo   = offsetDate(store.sync_days_forward);
-
-  try {
-    const baseUrl = 'https://api.webhotelier.net/v1';
-    const headers = {
-      Authorization: `Bearer ${store.webhotelier_api_key}`,
-      'Content-Type': 'application/json',
-    };
-
-    // Fetch all bookings in the window
-    const res = await fetch(
-      `${baseUrl}/bookings?property=${store.webhotelier_property_code}&arrival_from=${dateFrom}&arrival_to=${dateTo}&limit=500`,
-      { headers }
-    );
-
-    if (!res.ok) throw new Error(`WebHotelier API error: ${res.status} ${await res.text()}`);
-    const data = await res.json();
-    const bookings = data.bookings || data.data || [];
-
-    const stats = await upsertBookings(store, 'webhotelier', bookings, (b) => ({
-      external_id:        String(b.id || b.booking_id),
-      room_code:          String(b.room_code || b.room?.code || ''),
-      check_in:           b.arrival || b.check_in,
-      check_out:          b.departure || b.check_out,
-      guest_count:        b.adults + (b.children || 0) || 1,
-      breakfast_included: (store.webhotelier_breakfast_board_ids || []).includes(String(b.board_id || '')),
-      status:             b.status === 'cancelled' ? 'cancelled' : 'confirmed',
-      raw_data:           b,
-    }));
-
-    await endLog(logId, 'success', stats);
-    return { store: store.store_id, provider: 'webhotelier', ...stats };
-  } catch (err) {
-    await endLog(logId, 'failed', {}, err.message);
-    return { store: store.store_id, provider: 'webhotelier', error: err.message };
+// ─── Dispatcher ───────────────────────────────────────────────────────────────
+export async function syncFacility(facility, opts = { lookbackDays: 30, forwardDays: 90 }) {
+  if (!facility.external_id) {
+    return { facility_id: facility.id, name: facility.name, error: 'No external_id set — skipped' };
   }
+  if (facility.platform === 'hosthub') return syncHostHub(facility, opts);
+  if (facility.platform === 'webhotelier') return syncWebHotelier(facility, opts);
+  return { facility_id: facility.id, name: facility.name, error: `Unknown platform: ${facility.platform}` };
 }
 
-// ─── HostHub ───────────────────────────────────────────────────────────────────
-async function syncHostHub(store) {
-  const logId = await startLog(store.store_id, 'hosthub');
-  const dateFrom = offsetDate(-store.sync_days_lookback);
-  const baseUrl  = store.hosthub_environment === 'production'
-    ? 'https://app.hosthub.com/api/2019-03-01'
-    : 'https://eric.hosthub.com/api/2019-03-01';
+// ─── HostHub ──────────────────────────────────────────────────────────────────
+// Auth: Authorization: apiKey <key>
+// Endpoint: GET /rentals/{external_id}/calendar-events
+// The external_id on the facility IS the rental ID (e.g. 3gt8cnskey from the URL)
+async function syncHostHub(facility, { lookbackDays }) {
+  const logId    = await startLog(facility.id, 'hosthub');
+  const dateFrom = offsetDate(-lookbackDays);
+  const baseUrl  = 'https://eric.hosthub.com/api/2019-03-01';
 
   try {
-    // Auth: raw API key, no prefix (per HostHub OpenAPI spec)
     const headers = {
-      Authorization: store.hosthub_api_key,
+      Authorization: `apiKey ${facility.api_key_secret}`,
       'Content-Type': 'application/json',
     };
 
-    // Step 1: fetch all rentals for this account
-    const rentalsRes = await fetch(`${baseUrl}/rentals`, { headers });
-    if (!rentalsRes.ok) throw new Error(`HostHub rentals error: ${rentalsRes.status} ${await rentalsRes.text()}`);
-    const rentalsData = await rentalsRes.json();
-    const rentals = rentalsData.data || [];
+    const res = await fetch(
+      `${baseUrl}/rentals/${facility.external_id}/calendar-events?date_from_gt=${dateFrom}&is_visible=all`,
+      { headers }
+    );
+    if (!res.ok) throw new Error(`HostHub API error ${res.status}: ${await res.text()}`);
 
-    // Step 2: fetch calendar events per rental
-    // Endpoint: GET /rentals/{rentalId}/calendar-events
-    // Filter: date_from_gt to skip old bookings
-    const allBookings = [];
-    for (const rental of rentals) {
-      const eventsRes = await fetch(
-        `${baseUrl}/rentals/${rental.id}/calendar-events?date_from_gt=${dateFrom}&is_visible=all`,
-        { headers }
-      );
-      if (!eventsRes.ok) throw new Error(`HostHub events error for rental ${rental.id}: ${eventsRes.status}`);
-      const eventsData = await eventsRes.json();
-      const events = (eventsData.data || []).filter(e => e.type === 'Booking');
-      allBookings.push(...events);
-    }
+    const data   = await res.json();
+    const events = (data.data || []).filter(e => e.type === 'Booking');
 
-    const stats = await upsertBookings(store, 'hosthub', allBookings, (b) => ({
+    const stats = await upsertBookings(facility, 'hosthub', events, (b) => ({
       external_id:        String(b.id),
-      room_code:          String(b.rental?.id || ''),
+      room_code:          String(b.rental?.id || facility.external_id),
       check_in:           b.date_from,
       check_out:          b.date_to,
       guest_count:        parseInt(b.guest_number || b.guest_adults || 1, 10),
-      breakfast_included: true, // HostHub bookings = breakfast included
+      breakfast_included: true, // Airbnb/HostHub: all bookings include breakfast
       status:             b.cancelled_at ? 'cancelled' : 'confirmed',
       raw_data:           b,
     }));
 
+    await markFacilitySynced(facility.id);
     await endLog(logId, 'success', stats);
-    return { store: store.store_id, provider: 'hosthub', ...stats };
+    return { facility_id: facility.id, name: facility.name, provider: 'hosthub', ...stats };
   } catch (err) {
     await endLog(logId, 'failed', {}, err.message);
-    return { store: store.store_id, provider: 'hosthub', error: err.message };
+    return { facility_id: facility.id, name: facility.name, provider: 'hosthub', error: err.message };
+  }
+}
+
+// ─── WebHotelier ──────────────────────────────────────────────────────────────
+// Auth: Authorization: Bearer <api_key_secret>
+// external_id = WebHotelier property code
+async function syncWebHotelier(facility, { lookbackDays, forwardDays }) {
+  const logId    = await startLog(facility.id, 'webhotelier');
+  const dateFrom = offsetDate(-lookbackDays);
+  const dateTo   = offsetDate(forwardDays);
+
+  try {
+    const headers = {
+      Authorization: `Bearer ${facility.api_key_secret}`,
+      'Content-Type': 'application/json',
+    };
+
+    const res = await fetch(
+      `https://api.webhotelier.net/v1/bookings?property=${facility.external_id}&arrival_from=${dateFrom}&arrival_to=${dateTo}&limit=500`,
+      { headers }
+    );
+    if (!res.ok) throw new Error(`WebHotelier API error ${res.status}: ${await res.text()}`);
+
+    const data     = await res.json();
+    const bookings = data.bookings || data.data || [];
+
+    const stats = await upsertBookings(facility, 'webhotelier', bookings, (b) => ({
+      external_id:        String(b.id || b.booking_id),
+      room_code:          String(b.room_code || b.room?.code || ''),
+      check_in:           b.arrival || b.check_in,
+      check_out:          b.departure || b.check_out,
+      guest_count:        (b.adults || 0) + (b.children || 0) || 1,
+      breakfast_included: false, // WebHotelier: set per board_id config (future)
+      status:             b.status === 'cancelled' ? 'cancelled' : 'confirmed',
+      raw_data:           b,
+    }));
+
+    await markFacilitySynced(facility.id);
+    await endLog(logId, 'success', stats);
+    return { facility_id: facility.id, name: facility.name, provider: 'webhotelier', ...stats };
+  } catch (err) {
+    await endLog(logId, 'failed', {}, err.message);
+    return { facility_id: facility.id, name: facility.name, provider: 'webhotelier', error: err.message };
   }
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-async function upsertBookings(store, provider, rawBookings, transform) {
-  // Load room mappings for this store
-  const { data: mappings } = await supabase
-    .from('room_mappings')
-    .select('*')
-    .eq('store_id', store.store_id);
-
-  const mappingByRoomCode = {};
-  (mappings || []).forEach((m) => {
-    const key = provider === 'webhotelier' ? m.webhotelier_room_code : m.hosthub_rental_id;
-    if (key) mappingByRoomCode[key] = m.go_location_id;
-  });
-
-  let inserted = 0, updated = 0;
-  const rows = rawBookings.map((b) => {
-    const t = transform(b);
-    return {
-      store_id:          store.store_id,
-      provider,
-      go_location_id:    mappingByRoomCode[t.room_code] || null,
-      last_synced_at:    new Date().toISOString(),
-      ...t,
-    };
-  });
+async function upsertBookings(facility, provider, rawBookings, transform) {
+  const rows = rawBookings.map((b) => ({
+    facility_id:    facility.id,
+    provider,
+    go_location_id: facility.location_room_id || null,
+    last_synced_at: new Date().toISOString(),
+    ...transform(b),
+  }));
 
   if (rows.length > 0) {
     const { error } = await supabase
       .from('bookings')
-      .upsert(rows, { onConflict: 'store_id,provider,external_id', ignoreDuplicates: false });
+      .upsert(rows, { onConflict: 'facility_id,provider,external_id', ignoreDuplicates: false });
     if (error) throw new Error(`Upsert error: ${error.message}`);
-    inserted = rows.filter((r) => r.status === 'confirmed').length;
-    updated  = rows.length - inserted;
   }
 
-  return { fetched: rawBookings.length, inserted, updated, deleted: 0 };
+  return { fetched: rawBookings.length, inserted: rows.length, updated: 0, deleted: 0 };
 }
 
-async function startLog(store_id, provider) {
+async function markFacilitySynced(facilityId) {
+  const now = new Date().toISOString();
+  await supabase
+    .from('facilities')
+    .update({ last_synced_at: now, updated_at: now })
+    .eq('id', facilityId);
+}
+
+async function startLog(facility_id, provider) {
   const { data } = await supabase
     .from('sync_logs')
-    .insert({ store_id, provider, status: 'running' })
+    .insert({ facility_id, provider, status: 'running' })
     .select('id')
     .single();
   return data?.id;

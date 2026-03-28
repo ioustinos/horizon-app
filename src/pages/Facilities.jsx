@@ -3,18 +3,20 @@ import { supabase } from '../supabase'
 import FacilityForm from '../components/FacilityForm'
 
 const PLATFORM_LABEL = { hosthub: 'HostHub', webhotelier: 'WebHotelier' }
-const TYPE_LABEL = { hotel: 'Hotel', airbnb: 'Airbnb' }
+const TYPE_LABEL     = { hotel: 'Hotel', airbnb: 'Airbnb' }
 
 export default function Facilities() {
   const [facilities, setFacilities] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [search, setSearch] = useState('')
-  const [filterType, setFilterType] = useState('')
-  const [filterPlatform, setFilterPlatform] = useState('')
-  const [sortKey, setSortKey] = useState('name')
-  const [sortDir, setSortDir] = useState('asc')
-  const [showForm, setShowForm] = useState(false)
+  const [loading, setLoading]       = useState(true)
+  const [search, setSearch]         = useState('')
+  const [filterType, setFilterType]           = useState('')
+  const [filterPlatform, setFilterPlatform]   = useState('')
+  const [sortKey, setSortKey]       = useState('name')
+  const [sortDir, setSortDir]       = useState('asc')
+  const [showForm, setShowForm]     = useState(false)
   const [editTarget, setEditTarget] = useState(null)
+  const [syncingId, setSyncingId]   = useState(null)  // which facility is syncing
+  const [syncResults, setSyncResults] = useState({})  // facility_id → { ok, message }
 
   async function fetchFacilities() {
     setLoading(true)
@@ -41,7 +43,7 @@ export default function Facilities() {
           f.name.toLowerCase().includes(q) ||
           (f.secondary_name || '').toLowerCase().includes(q) ||
           (f.external_id || '').toLowerCase().includes(q)
-        const matchType = !filterType || f.facility_type === filterType
+        const matchType     = !filterType     || f.facility_type === filterType
         const matchPlatform = !filterPlatform || f.platform === filterPlatform
         return matchSearch && matchType && matchPlatform
       })
@@ -53,12 +55,49 @@ export default function Facilities() {
   }, [facilities, search, filterType, filterPlatform, sortKey, sortDir])
 
   function openCreate() { setEditTarget(null); setShowForm(true) }
-  function openEdit(f) { setEditTarget(f); setShowForm(true) }
+  function openEdit(f)  { setEditTarget(f);    setShowForm(true) }
 
   async function handleDelete(f) {
     if (!confirm(`Delete facility "${f.name}"? This cannot be undone.`)) return
     await supabase.from('facilities').delete().eq('id', f.id)
     fetchFacilities()
+  }
+
+  async function handleForceSync(f) {
+    if (syncingId) return
+    setSyncingId(f.id)
+    setSyncResults(r => ({ ...r, [f.id]: null }))
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token
+
+      const res = await fetch(`/api/force-sync?facility_id=${f.id}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+      const result = await res.json()
+
+      if (result.error) {
+        setSyncResults(r => ({ ...r, [f.id]: { ok: false, message: result.error } }))
+      } else {
+        setSyncResults(r => ({
+          ...r,
+          [f.id]: {
+            ok: true,
+            message: `Synced ${result.fetched ?? 0} bookings (${result.inserted ?? 0} new)`,
+          },
+        }))
+        // Refresh to show updated last_synced_at
+        fetchFacilities()
+      }
+    } catch (err) {
+      setSyncResults(r => ({ ...r, [f.id]: { ok: false, message: err.message } }))
+    }
+    setSyncingId(null)
   }
 
   function SortIcon({ col }) {
@@ -67,10 +106,10 @@ export default function Facilities() {
   }
 
   function formatDate(ts) {
-    if (!ts) return '—'
+    if (!ts) return null
     return new Date(ts).toLocaleString('en-GB', {
       day: '2-digit', month: 'short', year: 'numeric',
-      hour: '2-digit', minute: '2-digit'
+      hour: '2-digit', minute: '2-digit',
     })
   }
 
@@ -92,20 +131,12 @@ export default function Facilities() {
           value={search}
           onChange={e => setSearch(e.target.value)}
         />
-        <select
-          className="filter-select"
-          value={filterType}
-          onChange={e => setFilterType(e.target.value)}
-        >
+        <select className="filter-select" value={filterType} onChange={e => setFilterType(e.target.value)}>
           <option value="">All types</option>
           <option value="hotel">Hotel</option>
           <option value="airbnb">Airbnb</option>
         </select>
-        <select
-          className="filter-select"
-          value={filterPlatform}
-          onChange={e => setFilterPlatform(e.target.value)}
-        >
+        <select className="filter-select" value={filterPlatform} onChange={e => setFilterPlatform(e.target.value)}>
           <option value="">All platforms</option>
           <option value="hosthub">HostHub</option>
           <option value="webhotelier">WebHotelier</option>
@@ -131,11 +162,12 @@ export default function Facilities() {
                   Name <SortIcon col="name" />
                 </th>
                 <th>Type / Platform</th>
+                <th>External ID</th>
                 <th onClick={() => handleSort('unit_count')} className="sortable">
                   Units <SortIcon col="unit_count" />
                 </th>
                 <th onClick={() => handleSort('max_capacity')} className="sortable">
-                  Max Capacity <SortIcon col="max_capacity" />
+                  Capacity <SortIcon col="max_capacity" />
                 </th>
                 <th>Linked Store</th>
                 <th>Last Sync</th>
@@ -143,34 +175,58 @@ export default function Facilities() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map(f => (
-                <tr key={f.id}>
-                  <td>
-                    <div className="cell-primary">{f.name}</div>
-                    {f.secondary_name && <div className="cell-secondary">{f.secondary_name}</div>}
-                  </td>
-                  <td>
-                    <span className={`badge badge-type ${f.facility_type}`}>{TYPE_LABEL[f.facility_type]}</span>
-                    <span className={`badge badge-platform ${f.platform}`}>{PLATFORM_LABEL[f.platform]}</span>
-                  </td>
-                  <td className="cell-number">{f.unit_count}</td>
-                  <td className="cell-number">{f.max_capacity ?? <span className="muted">—</span>}</td>
-                  <td>
-                    {f.stores?.name
-                      ? <span className="store-tag">{f.stores.name}</span>
-                      : <span className="muted">Unlinked</span>}
-                  </td>
-                  <td className="cell-date">
-                    {f.last_synced_at
-                      ? <span className="sync-ok">{formatDate(f.last_synced_at)}</span>
-                      : <span className="muted">Never synced</span>}
-                  </td>
-                  <td className="cell-actions">
-                    <button className="btn btn-ghost btn-sm" onClick={() => openEdit(f)}>Edit</button>
-                    <button className="btn btn-danger btn-sm" onClick={() => handleDelete(f)}>Delete</button>
-                  </td>
-                </tr>
-              ))}
+              {filtered.map(f => {
+                const syncResult = syncResults[f.id]
+                const isSyncing  = syncingId === f.id
+                return (
+                  <tr key={f.id}>
+                    <td>
+                      <div className="cell-primary">{f.name}</div>
+                      {f.secondary_name && <div className="cell-secondary">{f.secondary_name}</div>}
+                    </td>
+                    <td>
+                      <span className={`badge badge-type ${f.facility_type}`}>{TYPE_LABEL[f.facility_type]}</span>
+                      <span className={`badge badge-platform ${f.platform}`}>{PLATFORM_LABEL[f.platform]}</span>
+                    </td>
+                    <td>
+                      {f.external_id
+                        ? <code className="code-chip">{f.external_id}</code>
+                        : <span className="muted">—</span>}
+                    </td>
+                    <td className="cell-number">{f.unit_count}</td>
+                    <td className="cell-number">{f.max_capacity ?? <span className="muted">—</span>}</td>
+                    <td>
+                      {f.stores?.name
+                        ? <span className="store-tag">{f.stores.name}</span>
+                        : <span className="muted">Unlinked</span>}
+                    </td>
+                    <td className="cell-date">
+                      {f.last_synced_at ? (
+                        <span className="sync-ok">{formatDate(f.last_synced_at)}</span>
+                      ) : (
+                        <span className="muted">Never synced</span>
+                      )}
+                      {syncResult && (
+                        <div className={`sync-result ${syncResult.ok ? 'ok' : 'err'}`}>
+                          {syncResult.ok ? '✓ ' : '✗ '}{syncResult.message}
+                        </div>
+                      )}
+                    </td>
+                    <td className="cell-actions">
+                      <button
+                        className={`btn btn-sync btn-sm ${isSyncing ? 'syncing' : ''}`}
+                        onClick={() => handleForceSync(f)}
+                        disabled={!!syncingId}
+                        title="Force sync this facility now"
+                      >
+                        {isSyncing ? '⟳ Syncing…' : '⟳ Sync'}
+                      </button>
+                      <button className="btn btn-ghost btn-sm" onClick={() => openEdit(f)}>Edit</button>
+                      <button className="btn btn-danger btn-sm" onClick={() => handleDelete(f)}>Delete</button>
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>

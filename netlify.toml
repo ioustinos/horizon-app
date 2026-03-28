@@ -4,7 +4,7 @@
   functions = "netlify/functions"
 
 [functions."sync-bookings"]
-  schedule = "*/10 * * * *"
+  schedule = "*/5 * * * *"
 
 [dev]
   command = "npm run dev"
