@@ -3,6 +3,9 @@
   publish = "dist"
   functions = "netlify/functions"
 
+[functions."sync-bookings"]
+  schedule = "*/10 * * * *"
+
 [dev]
   command = "npm run dev"
   port = 8888
