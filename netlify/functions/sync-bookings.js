@@ -148,14 +148,29 @@ async function upsertBookings(facility, provider, rawBookings, transform) {
     ...transform(b),
   }));
 
-  if (rows.length > 0) {
-    const { error } = await supabase
-      .from('bookings')
-      .upsert(rows, { onConflict: 'facility_id,provider,external_id', ignoreDuplicates: false });
-    if (error) throw new Error(`Upsert error: ${error.message}`);
+  if (rows.length === 0) {
+    return { fetched: 0, inserted: 0, updated: 0, deleted: 0 };
   }
 
-  return { fetched: rawBookings.length, inserted: rows.length, updated: 0, deleted: 0 };
+  // Fetch existing external_ids for this facility+provider so we can
+  // distinguish genuine inserts from updates after the upsert.
+  const { data: existing } = await supabase
+    .from('bookings')
+    .select('external_id')
+    .eq('facility_id', facility.id)
+    .eq('provider', provider);
+
+  const existingIds = new Set((existing || []).map(r => r.external_id));
+
+  const { error } = await supabase
+    .from('bookings')
+    .upsert(rows, { onConflict: 'facility_id,provider,external_id', ignoreDuplicates: false });
+  if (error) throw new Error(`Upsert error: ${error.message}`);
+
+  const inserted = rows.filter(r => !existingIds.has(r.external_id)).length;
+  const updated  = rows.filter(r =>  existingIds.has(r.external_id)).length;
+
+  return { fetched: rawBookings.length, inserted, updated, deleted: 0 };
 }
 
 async function markFacilitySynced(facilityId) {
