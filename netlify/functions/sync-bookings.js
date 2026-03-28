@@ -85,34 +85,46 @@ async function syncWebHotelier(store) {
 async function syncHostHub(store) {
   const logId = await startLog(store.store_id, 'hosthub');
   const dateFrom = offsetDate(-store.sync_days_lookback);
-  const dateTo   = offsetDate(store.sync_days_forward);
   const baseUrl  = store.hosthub_environment === 'production'
     ? 'https://app.hosthub.com/api/2019-03-01'
     : 'https://eric.hosthub.com/api/2019-03-01';
 
   try {
+    // Auth: raw API key, no prefix (per HostHub OpenAPI spec)
     const headers = {
-      Authorization: `Bearer ${store.hosthub_api_key}`,
+      Authorization: store.hosthub_api_key,
       'Content-Type': 'application/json',
     };
 
-    const res = await fetch(
-      `${baseUrl}/bookings?date_from_gt=${dateFrom}&date_from_lt=${dateTo}&per_page=500`,
-      { headers }
-    );
+    // Step 1: fetch all rentals for this account
+    const rentalsRes = await fetch(`${baseUrl}/rentals`, { headers });
+    if (!rentalsRes.ok) throw new Error(`HostHub rentals error: ${rentalsRes.status} ${await rentalsRes.text()}`);
+    const rentalsData = await rentalsRes.json();
+    const rentals = rentalsData.data || [];
 
-    if (!res.ok) throw new Error(`HostHub API error: ${res.status} ${await res.text()}`);
-    const data = await res.json();
-    const bookings = data.data || data.bookings || [];
+    // Step 2: fetch calendar events per rental
+    // Endpoint: GET /rentals/{rentalId}/calendar-events
+    // Filter: date_from_gt to skip old bookings
+    const allBookings = [];
+    for (const rental of rentals) {
+      const eventsRes = await fetch(
+        `${baseUrl}/rentals/${rental.id}/calendar-events?date_from_gt=${dateFrom}&is_visible=all`,
+        { headers }
+      );
+      if (!eventsRes.ok) throw new Error(`HostHub events error for rental ${rental.id}: ${eventsRes.status}`);
+      const eventsData = await eventsRes.json();
+      const events = (eventsData.data || []).filter(e => e.type === 'Booking');
+      allBookings.push(...events);
+    }
 
-    const stats = await upsertBookings(store, 'hosthub', bookings, (b) => ({
+    const stats = await upsertBookings(store, 'hosthub', allBookings, (b) => ({
       external_id:        String(b.id),
-      room_code:          String(b.rental_id || b.rental?.id || ''),
-      check_in:           b.date_from || b.check_in,
-      check_out:          b.date_to || b.check_out,
-      guest_count:        b.guests || b.guest_count || 1,
-      breakfast_included: true, // HostHub: presence = breakfast included
-      status:             b.status === 'cancelled' ? 'cancelled' : 'confirmed',
+      room_code:          String(b.rental?.id || ''),
+      check_in:           b.date_from,
+      check_out:          b.date_to,
+      guest_count:        parseInt(b.guest_number || b.guest_adults || 1, 10),
+      breakfast_included: true, // HostHub bookings = breakfast included
+      status:             b.cancelled_at ? 'cancelled' : 'confirmed',
       raw_data:           b,
     }));
 
