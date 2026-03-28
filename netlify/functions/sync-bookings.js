@@ -60,8 +60,9 @@ async function syncHostHub(facility, { lookbackDays }) {
   const baseUrl  = 'https://eric.hosthub.com/api/2019-03-01';
 
   try {
+    // HostHub auth: raw API key value, no prefix (per HostHub OpenAPI spec)
     const headers = {
-      Authorization: `apiKey ${facility.api_key_secret}`,
+      Authorization: facility.api_key_secret,
       'Content-Type': 'application/json',
     };
 

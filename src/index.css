@@ -777,3 +777,134 @@ html, body, #root {
   font-size: .875rem;
   font-weight: 500;
 }
+
+/* ─── Sync Logs ────────────────────────────────────── */
+.log-list {
+  display: flex;
+  flex-direction: column;
+  gap: .4rem;
+}
+
+.log-row {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: var(--shadow);
+}
+
+.log-row.log-failed  { border-left: 3px solid #f87171; }
+.log-row.log-success { border-left: 3px solid #4ade80; }
+.log-row.log-running { border-left: 3px solid #60a5fa; }
+
+.log-main {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: .65rem 1rem;
+  flex-wrap: wrap;
+}
+
+.log-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  padding: .2rem .6rem;
+  border-radius: 99px;
+  font-size: .72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  flex-shrink: 0;
+  min-width: 70px;
+  justify-content: center;
+}
+
+.log-status-pill.success { background: #dcfce7; color: #15803d; }
+.log-status-pill.failed  { background: #fee2e2; color: #dc2626; }
+.log-status-pill.running { background: #dbeafe; color: #1d4ed8; }
+
+.log-spinner {
+  width: 8px;
+  height: 8px;
+  border: 1.5px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin .7s linear infinite;
+  flex-shrink: 0;
+}
+
+.log-identity {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.log-facility {
+  font-weight: 500;
+  font-size: .875rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.log-timing {
+  display: flex;
+  align-items: center;
+  gap: .35rem;
+  font-size: .8125rem;
+  color: var(--text-sub);
+  white-space: nowrap;
+}
+
+.log-time   { font-weight: 500; color: var(--text); }
+.log-duration { color: var(--text-sub); }
+
+.log-counts {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+}
+
+.log-count-item {
+  display: flex;
+  align-items: center;
+  gap: .2rem;
+  font-size: .8125rem;
+  color: var(--text-sub);
+}
+
+.log-count-icon     { font-weight: 700; color: var(--text-sub); }
+.log-count-icon.new { color: var(--success); }
+.log-count-icon.upd { color: #2563eb; }
+
+.log-error-toggle {
+  background: none;
+  border: 1px solid #fecaca;
+  color: #dc2626;
+  border-radius: var(--radius-sm);
+  padding: .2rem .6rem;
+  font-size: .75rem;
+  cursor: pointer;
+  white-space: nowrap;
+  margin-left: auto;
+  transition: background .15s;
+}
+.log-error-toggle:hover { background: #fef2f2; }
+
+.log-error-body {
+  border-top: 1px solid #fee2e2;
+  background: #fff5f5;
+  padding: .75rem 1rem;
+}
+
+.log-error-pre {
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: .78rem;
+  color: #b91c1c;
+  white-space: pre-wrap;
+  word-break: break-all;
+  margin: 0;
+}

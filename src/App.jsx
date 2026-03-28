@@ -6,6 +6,7 @@ import AdminLayout from './pages/AdminLayout'
 import Stores     from './pages/Stores'
 import Facilities from './pages/Facilities'
 import Bookings   from './pages/Bookings'
+import SyncLogs   from './pages/SyncLogs'
 import Settings   from './pages/Settings'
 
 export default function App() {
@@ -26,6 +27,7 @@ export default function App() {
             <Route path="stores"     element={<Stores />} />
             <Route path="facilities" element={<Facilities />} />
             <Route path="bookings"   element={<Bookings />} />
+            <Route path="sync-logs"  element={<SyncLogs />} />
             <Route path="settings"   element={<Settings />} />
           </Route>
           <Route path="*" element={<Navigate to="/admin" replace />} />
