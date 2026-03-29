@@ -52,7 +52,8 @@ export default function SyncLogs() {
     const running  = logs.filter(l => l.status === 'running').length
     const fetched  = logs.reduce((s, l) => s + (l.bookings_fetched  || 0), 0)
     const inserted = logs.reduce((s, l) => s + (l.bookings_inserted || 0), 0)
-    return { total, success, failed, running, fetched, inserted }
+    const deleted  = logs.reduce((s, l) => s + (l.bookings_deleted  || 0), 0)
+    return { total, success, failed, running, fetched, inserted, deleted }
   }, [logs])
 
   function duration(log) {
@@ -119,6 +120,12 @@ export default function SyncLogs() {
           <span className="stat-value">{stats.inserted}</span>
           <span className="stat-label">Bookings inserted</span>
         </div>
+        {stats.deleted > 0 && (
+          <div className="stat-card" style={{ borderColor: '#fcd34d' }}>
+            <span className="stat-value" style={{ color: '#d97706' }}>{stats.deleted}</span>
+            <span className="stat-label">Bookings deleted</span>
+          </div>
+        )}
       </div>
 
       {/* Filters */}
@@ -194,6 +201,12 @@ export default function SyncLogs() {
                       <span className="log-count-item" title="Existing bookings updated">
                         <span className="log-count-icon upd">↻</span>
                         {log.bookings_updated} updated
+                      </span>
+                    )}
+                    {(log.bookings_deleted ?? 0) > 0 && (
+                      <span className="log-count-item" title="Bookings deleted (no longer on platform)">
+                        <span className="log-count-icon" style={{ color: '#d97706' }}>✕</span>
+                        {log.bookings_deleted} deleted
                       </span>
                     )}
                   </div>

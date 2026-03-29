@@ -3,12 +3,12 @@ import { supabase } from '../supabase'
 import StoreForm from '../components/StoreForm'
 
 export default function Stores() {
-  const [stores, setStores] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [search, setSearch] = useState('')
-  const [sortKey, setSortKey] = useState('name')
-  const [sortDir, setSortDir] = useState('asc')
-  const [showForm, setShowForm] = useState(false)
+  const [stores, setStores]       = useState([])
+  const [loading, setLoading]     = useState(true)
+  const [search, setSearch]       = useState('')
+  const [sortKey, setSortKey]     = useState('name')
+  const [sortDir, setSortDir]     = useState('asc')
+  const [showForm, setShowForm]   = useState(false)
   const [editTarget, setEditTarget] = useState(null)
 
   async function fetchStores() {
@@ -33,6 +33,7 @@ export default function Stores() {
     return stores
       .filter(s =>
         s.name.toLowerCase().includes(q) ||
+        (s.accommodation_company || '').toLowerCase().includes(q) ||
         s.gonnaorder_store_id.toLowerCase().includes(q)
       )
       .sort((a, b) => {
@@ -61,7 +62,7 @@ export default function Stores() {
       <div className="page-header">
         <div>
           <h1 className="page-title">Stores</h1>
-          <p className="page-subtitle">GonnaOrder restaurant stores connected to Horizon</p>
+          <p className="page-subtitle">GonnaOrder restaurant stores and their accommodation companies</p>
         </div>
         <button className="btn btn-primary" onClick={openCreate}>+ New Store</button>
       </div>
@@ -70,7 +71,7 @@ export default function Stores() {
         <input
           className="search-input"
           type="search"
-          placeholder="Search stores…"
+          placeholder="Search stores or companies…"
           value={search}
           onChange={e => setSearch(e.target.value)}
         />
@@ -91,10 +92,13 @@ export default function Stores() {
                 <th onClick={() => handleSort('name')} className="sortable">
                   Store Name <SortIcon col="name" />
                 </th>
+                <th onClick={() => handleSort('accommodation_company')} className="sortable">
+                  Accommodation Company <SortIcon col="accommodation_company" />
+                </th>
                 <th onClick={() => handleSort('gonnaorder_store_id')} className="sortable">
                   GonnaOrder ID <SortIcon col="gonnaorder_store_id" />
                 </th>
-                <th>Public Link</th>
+                <th>API Key</th>
                 <th>Facilities</th>
                 <th>Actions</th>
               </tr>
@@ -103,11 +107,12 @@ export default function Stores() {
               {filtered.map(store => (
                 <tr key={store.id}>
                   <td className="cell-primary">{store.name}</td>
+                  <td>{store.accommodation_company || <span className="muted">—</span>}</td>
                   <td><code className="code-chip">{store.gonnaorder_store_id}</code></td>
                   <td>
-                    {store.public_link
-                      ? <a href={store.public_link} target="_blank" rel="noreferrer" className="table-link">Open ↗</a>
-                      : <span className="muted">—</span>}
+                    {store.api_key_name
+                      ? <span className="badge">{store.api_key_name}</span>
+                      : <span className="muted">Not set</span>}
                   </td>
                   <td>
                     {store.facilities?.length > 0

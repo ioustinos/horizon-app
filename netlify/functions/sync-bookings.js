@@ -20,10 +20,10 @@ export const handler = async () => {
   const forwardDays      = parseInt(cfg.sync_forward_days     || '90', 10);
   const cutoff           = new Date(Date.now() - intervalMinutes * 60 * 1000).toISOString();
 
-  // Load facilities due for sync (never synced, or synced before cutoff)
+  // Load facilities due for sync — join stores to get API credentials
   const { data: facilities, error } = await supabase
     .from('facilities')
-    .select('*')
+    .select('*, stores(api_key_name, api_key_secret)')
     .or(`last_synced_at.is.null,last_synced_at.lt.${cutoff}`);
 
   if (error) return { statusCode: 500, body: JSON.stringify({ error: error.message }) };
@@ -45,24 +45,38 @@ export async function syncFacility(facility, opts = { lookbackDays: 30, forwardD
   if (!facility.external_id) {
     return { facility_id: facility.id, name: facility.name, error: 'No external_id set — skipped' };
   }
-  if (facility.platform === 'hosthub') return syncHostHub(facility, opts);
+  // If the facility record doesn't have stores joined, fetch it
+  if (!facility.stores) {
+    const { data } = await supabase
+      .from('facilities')
+      .select('*, stores(api_key_name, api_key_secret)')
+      .eq('id', facility.id)
+      .single();
+    if (data) facility = data;
+  }
+  if (facility.platform === 'hosthub')     return syncHostHub(facility, opts);
   if (facility.platform === 'webhotelier') return syncWebHotelier(facility, opts);
   return { facility_id: facility.id, name: facility.name, error: `Unknown platform: ${facility.platform}` };
 }
 
 // ─── HostHub ──────────────────────────────────────────────────────────────────
-// Auth: Authorization: apiKey <key>
+// Auth: raw API key from the linked store, no prefix
 // Endpoint: GET /rentals/{external_id}/calendar-events
-// The external_id on the facility IS the rental ID (e.g. 3gt8cnskey from the URL)
 async function syncHostHub(facility, { lookbackDays }) {
   const logId    = await startLog(facility.id, 'hosthub');
   const dateFrom = offsetDate(-lookbackDays);
   const baseUrl  = 'https://eric.hosthub.com/api/2019-03-01';
 
+  const apiSecret = facility.stores?.api_key_secret;
+  if (!apiSecret) {
+    const err = 'No API key secret found on linked store — skipped';
+    await endLog(logId, 'failed', {}, err);
+    return { facility_id: facility.id, name: facility.name, provider: 'hosthub', error: err };
+  }
+
   try {
-    // HostHub auth: raw API key value, no prefix (per HostHub OpenAPI spec)
     const headers = {
-      Authorization: facility.api_key_secret,
+      Authorization: apiSecret,
       'Content-Type': 'application/json',
     };
 
@@ -84,7 +98,7 @@ async function syncHostHub(facility, { lookbackDays }) {
       breakfast_included: true, // Airbnb/HostHub: all bookings include breakfast
       status:             b.cancelled_at ? 'cancelled' : 'confirmed',
       raw_data:           b,
-    }));
+    }), dateFrom);
 
     await markFacilitySynced(facility.id);
     await endLog(logId, 'success', stats);
@@ -96,16 +110,23 @@ async function syncHostHub(facility, { lookbackDays }) {
 }
 
 // ─── WebHotelier ──────────────────────────────────────────────────────────────
-// Auth: Authorization: Bearer <api_key_secret>
+// Auth: Authorization: Bearer <api_key_secret from linked store>
 // external_id = WebHotelier property code
 async function syncWebHotelier(facility, { lookbackDays, forwardDays }) {
   const logId    = await startLog(facility.id, 'webhotelier');
   const dateFrom = offsetDate(-lookbackDays);
   const dateTo   = offsetDate(forwardDays);
 
+  const apiSecret = facility.stores?.api_key_secret;
+  if (!apiSecret) {
+    const err = 'No API key secret found on linked store — skipped';
+    await endLog(logId, 'failed', {}, err);
+    return { facility_id: facility.id, name: facility.name, provider: 'webhotelier', error: err };
+  }
+
   try {
     const headers = {
-      Authorization: `Bearer ${facility.api_key_secret}`,
+      Authorization: `Bearer ${apiSecret}`,
       'Content-Type': 'application/json',
     };
 
@@ -127,7 +148,7 @@ async function syncWebHotelier(facility, { lookbackDays, forwardDays }) {
       breakfast_included: false, // WebHotelier: set per board_id config (future)
       status:             b.status === 'cancelled' ? 'cancelled' : 'confirmed',
       raw_data:           b,
-    }));
+    }), dateFrom);
 
     await markFacilitySynced(facility.id);
     await endLog(logId, 'success', stats);
@@ -139,7 +160,12 @@ async function syncWebHotelier(facility, { lookbackDays, forwardDays }) {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-async function upsertBookings(facility, provider, rawBookings, transform) {
+
+// upsertBookings
+// - Inserts new bookings, updates changed ones
+// - Deletes bookings that exist in DB but were NOT returned by the API,
+//   scoped to check_in >= syncFrom (within our sync window only)
+async function upsertBookings(facility, provider, rawBookings, transform, syncFrom) {
   const rows = rawBookings.map((b) => ({
     facility_id:    facility.id,
     provider,
@@ -148,12 +174,7 @@ async function upsertBookings(facility, provider, rawBookings, transform) {
     ...transform(b),
   }));
 
-  if (rows.length === 0) {
-    return { fetched: 0, inserted: 0, updated: 0, deleted: 0 };
-  }
-
-  // Fetch existing bookings with their key fields so we can distinguish
-  // genuine inserts, real data changes, and unchanged rows.
+  // Fetch all existing bookings for this facility+provider
   const { data: existing } = await supabase
     .from('bookings')
     .select('external_id, check_in, check_out, guest_count, status, breakfast_included')
@@ -163,19 +184,46 @@ async function upsertBookings(facility, provider, rawBookings, transform) {
   const existingMap = new Map((existing || []).map(r => [r.external_id, r]));
 
   const COMPARE_FIELDS = ['check_in', 'check_out', 'guest_count', 'status', 'breakfast_included'];
-
   const hasChanged = (incoming, existing) =>
     COMPARE_FIELDS.some(f => String(incoming[f] ?? '') !== String(existing[f] ?? ''));
 
+  const fetchedIds = new Set(rows.map(r => r.external_id));
+
+  // Count inserts and real updates before touching the DB
   const inserted = rows.filter(r => !existingMap.has(r.external_id)).length;
-  const updated  = rows.filter(r => existingMap.has(r.external_id) && hasChanged(r, existingMap.get(r.external_id))).length;
+  const updated  = rows.filter(r =>
+    existingMap.has(r.external_id) && hasChanged(r, existingMap.get(r.external_id))
+  ).length;
 
-  const { error } = await supabase
-    .from('bookings')
-    .upsert(rows, { onConflict: 'facility_id,provider,external_id', ignoreDuplicates: false });
-  if (error) throw new Error(`Upsert error: ${error.message}`);
+  // Upsert fetched bookings
+  if (rows.length > 0) {
+    const { error } = await supabase
+      .from('bookings')
+      .upsert(rows, { onConflict: 'facility_id,provider,external_id', ignoreDuplicates: false });
+    if (error) throw new Error(`Upsert error: ${error.message}`);
+  }
 
-  return { fetched: rawBookings.length, inserted, updated, deleted: 0 };
+  // Delete bookings that were not returned by the API but fall within our
+  // sync window (check_in >= syncFrom). Bookings outside the window are left alone.
+  let deleted = 0;
+  const staleIds = [...existingMap.keys()].filter(id => {
+    if (fetchedIds.has(id)) return false;
+    if (!syncFrom) return false;
+    const rec = existingMap.get(id);
+    return rec.check_in && new Date(rec.check_in) >= new Date(syncFrom);
+  });
+
+  if (staleIds.length > 0) {
+    const { error } = await supabase
+      .from('bookings')
+      .delete()
+      .eq('facility_id', facility.id)
+      .eq('provider', provider)
+      .in('external_id', staleIds);
+    if (!error) deleted = staleIds.length;
+  }
+
+  return { fetched: rawBookings.length, inserted, updated, deleted };
 }
 
 async function markFacilitySynced(facilityId) {

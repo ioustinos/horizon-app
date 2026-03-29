@@ -7,8 +7,6 @@ const EMPTY = {
   facility_type: 'hotel',
   external_id: '',
   platform: 'hosthub',
-  api_key_name: '',
-  api_key_secret: '',
   unit_count: 1,
   max_capacity: '',
   store_id: '',
@@ -23,8 +21,6 @@ export default function FacilityForm({ facility, onClose, onSaved }) {
     facility_type: facility.facility_type || 'hotel',
     external_id: facility.external_id || '',
     platform: facility.platform || 'hosthub',
-    api_key_name: facility.api_key_name || '',
-    api_key_secret: facility.api_key_secret || '',
     unit_count: facility.unit_count ?? 1,
     max_capacity: facility.max_capacity ?? '',
     store_id: facility.store_id || '',
@@ -60,8 +56,6 @@ export default function FacilityForm({ facility, onClose, onSaved }) {
       facility_type: form.facility_type,
       external_id: form.external_id.trim() || null,
       platform: form.platform,
-      api_key_name: form.api_key_name.trim() || null,
-      api_key_secret: form.api_key_secret.trim() || null,
       unit_count: Number(form.unit_count),
       max_capacity: form.max_capacity !== '' ? Number(form.max_capacity) : null,
       store_id: form.store_id || null,
@@ -140,6 +134,9 @@ export default function FacilityForm({ facility, onClose, onSaved }) {
 
           {/* ── Platform ── */}
           <h3 className="form-section-title">Platform Connection</h3>
+          <p className="form-section-hint">
+            API credentials are managed at the Store level and shared across all its facilities.
+          </p>
           <div className="form-grid">
             <div className="field-group span-2">
               <label htmlFor="f-external-id">Platform ID (External ID)</label>
@@ -150,28 +147,7 @@ export default function FacilityForm({ facility, onClose, onSaved }) {
                 onChange={e => set('external_id', e.target.value)}
                 placeholder="ID assigned by HostHub or WebHotelier"
               />
-              <p className="field-hint">The property ID as it appears in the booking platform.</p>
-            </div>
-            <div className="field-group">
-              <label htmlFor="f-key-name">API Key Name</label>
-              <input
-                id="f-key-name"
-                type="text"
-                value={form.api_key_name}
-                onChange={e => set('api_key_name', e.target.value)}
-                placeholder="Username / key identifier"
-              />
-            </div>
-            <div className="field-group">
-              <label htmlFor="f-key-secret">API Key Secret</label>
-              <input
-                id="f-key-secret"
-                type="password"
-                value={form.api_key_secret}
-                onChange={e => set('api_key_secret', e.target.value)}
-                placeholder="Password / secret"
-                autoComplete="new-password"
-              />
+              <p className="field-hint">The property ID as it appears in the booking platform (e.g. from the HostHub URL).</p>
             </div>
           </div>
 
