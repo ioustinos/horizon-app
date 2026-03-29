@@ -908,3 +908,101 @@ html, body, #root {
   word-break: break-all;
   margin: 0;
 }
+
+/* ── Pull Listings ───────────────────────────────────────────────────────── */
+.pull-store-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.pull-store-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.pull-store-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
+
+.pull-store-identity {
+  display: flex;
+  flex-direction: column;
+  gap: .15rem;
+}
+
+.pull-store-name {
+  font-weight: 600;
+  font-size: 1rem;
+  color: var(--text);
+}
+
+.pull-store-company {
+  font-size: .8125rem;
+  color: var(--text-sub);
+}
+
+.pull-store-actions {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  flex-shrink: 0;
+}
+
+.pull-error {
+  margin: .75rem 1.25rem;
+  padding: .6rem .9rem;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: var(--radius-sm);
+  color: #b91c1c;
+  font-size: .875rem;
+}
+
+.pull-empty {
+  padding: 1rem 1.25rem;
+  color: var(--text-sub);
+  font-size: .875rem;
+}
+
+.inline-warning {
+  font-size: .8125rem;
+  color: #d97706;
+}
+
+/* Success button variant */
+.btn-success {
+  background: #f0fdf4;
+  border: 1px solid #86efac;
+  color: #15803d;
+  font-weight: 500;
+}
+.btn-success:hover:not(:disabled) {
+  background: #dcfce7;
+  border-color: #4ade80;
+}
+
+/* Badge variants used on pull page */
+.badge-success { background: #dcfce7; color: #15803d; }
+.badge-neutral { background: #f3f4f6; color: #6b7280; }
+
+/* Spinner inside button */
+.btn-spinner {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin .7s linear infinite;
+  margin-right: .3rem;
+  vertical-align: middle;
+}
