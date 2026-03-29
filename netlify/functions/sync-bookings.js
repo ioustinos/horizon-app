@@ -152,23 +152,28 @@ async function upsertBookings(facility, provider, rawBookings, transform) {
     return { fetched: 0, inserted: 0, updated: 0, deleted: 0 };
   }
 
-  // Fetch existing external_ids for this facility+provider so we can
-  // distinguish genuine inserts from updates after the upsert.
+  // Fetch existing bookings with their key fields so we can distinguish
+  // genuine inserts, real data changes, and unchanged rows.
   const { data: existing } = await supabase
     .from('bookings')
-    .select('external_id')
+    .select('external_id, check_in, check_out, guest_count, status, breakfast_included')
     .eq('facility_id', facility.id)
     .eq('provider', provider);
 
-  const existingIds = new Set((existing || []).map(r => r.external_id));
+  const existingMap = new Map((existing || []).map(r => [r.external_id, r]));
+
+  const COMPARE_FIELDS = ['check_in', 'check_out', 'guest_count', 'status', 'breakfast_included'];
+
+  const hasChanged = (incoming, existing) =>
+    COMPARE_FIELDS.some(f => String(incoming[f] ?? '') !== String(existing[f] ?? ''));
+
+  const inserted = rows.filter(r => !existingMap.has(r.external_id)).length;
+  const updated  = rows.filter(r => existingMap.has(r.external_id) && hasChanged(r, existingMap.get(r.external_id))).length;
 
   const { error } = await supabase
     .from('bookings')
     .upsert(rows, { onConflict: 'facility_id,provider,external_id', ignoreDuplicates: false });
   if (error) throw new Error(`Upsert error: ${error.message}`);
-
-  const inserted = rows.filter(r => !existingIds.has(r.external_id)).length;
-  const updated  = rows.filter(r =>  existingIds.has(r.external_id)).length;
 
   return { fetched: rawBookings.length, inserted, updated, deleted: 0 };
 }
