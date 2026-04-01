@@ -8,6 +8,7 @@ export default function StoreForm({ store, onClose, onSaved }) {
     accommodation_company: store?.accommodation_company || '',
     gonnaorder_store_id: store?.gonnaorder_store_id || '',
     public_link:         store?.public_link || '',
+    platform:            store?.platform || 'hosthub',
     api_key_name:        store?.api_key_name || '',
     api_key_secret:      store?.api_key_secret || '',
   })
@@ -28,6 +29,7 @@ export default function StoreForm({ store, onClose, onSaved }) {
       accommodation_company: form.accommodation_company.trim() || null,
       gonnaorder_store_id:   form.gonnaorder_store_id.trim(),
       public_link:           form.public_link.trim() || null,
+      platform:              form.platform,
       api_key_name:          form.api_key_name.trim() || null,
       api_key_secret:        form.api_key_secret.trim() || null,
       updated_at:            new Date().toISOString(),
@@ -114,30 +116,55 @@ export default function StoreForm({ store, onClose, onSaved }) {
             </div>
           </div>
 
-          {/* ── API Credentials ── */}
-          <h3 className="form-section-title">API Credentials</h3>
+          {/* ── Platform & API Credentials ── */}
+          <h3 className="form-section-title">Platform & API Credentials</h3>
           <p className="form-section-hint">
-            The booking platform account credentials for all facilities linked to this store.
+            The booking platform and account credentials for all facilities linked to this store.
           </p>
           <div className="form-grid">
             <div className="field-group">
-              <label htmlFor="s-key-name">API Key Name</label>
+              <label htmlFor="s-platform">Booking Platform <span className="required">*</span></label>
+              <select
+                id="s-platform"
+                value={form.platform}
+                onChange={e => set('platform', e.target.value)}
+              >
+                <option value="hosthub">HostHub</option>
+                <option value="webhotelier">WebHotelier</option>
+              </select>
+              <p className="field-hint">
+                {form.platform === 'webhotelier'
+                  ? 'WebHotelier uses Basic Auth (username + password).'
+                  : 'HostHub uses an API key for authentication.'}
+              </p>
+            </div>
+          </div>
+          <div className="form-grid">
+            <div className="field-group">
+              <label htmlFor="s-key-name">
+                {form.platform === 'webhotelier' ? 'Username / Property Code' : 'API Key Name'}
+              </label>
               <input
                 id="s-key-name"
                 type="text"
                 value={form.api_key_name}
                 onChange={e => set('api_key_name', e.target.value)}
-                placeholder="Username / key identifier"
+                placeholder={form.platform === 'webhotelier' ? 'e.g. HRZNTEST' : 'Username / key identifier'}
               />
+              {form.platform === 'webhotelier' && (
+                <p className="field-hint">This is both the API username and the property code.</p>
+              )}
             </div>
             <div className="field-group">
-              <label htmlFor="s-key-secret">API Key Secret</label>
+              <label htmlFor="s-key-secret">
+                {form.platform === 'webhotelier' ? 'API Password' : 'API Key Secret'}
+              </label>
               <input
                 id="s-key-secret"
                 type="password"
                 value={form.api_key_secret}
                 onChange={e => set('api_key_secret', e.target.value)}
-                placeholder="Password / secret key"
+                placeholder={form.platform === 'webhotelier' ? 'API password' : 'Password / secret key'}
                 autoComplete="new-password"
               />
             </div>

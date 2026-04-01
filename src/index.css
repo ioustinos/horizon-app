@@ -993,6 +993,7 @@ html, body, #root {
 /* Badge variants used on pull page */
 .badge-success { background: #dcfce7; color: #15803d; }
 .badge-neutral { background: #f3f4f6; color: #6b7280; }
+.badge-info    { background: #fef9c3; color: #854d0e; }
 
 /* Spinner inside button */
 .btn-spinner {

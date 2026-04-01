@@ -16,7 +16,7 @@ export default function PullFacilities() {
   const loadData = useCallback(async () => {
     setLoading(true)
     const [storesRes, facilitiesRes] = await Promise.all([
-      supabase.from('stores').select('id, name, accommodation_company, api_key_name, api_key_secret').order('name'),
+      supabase.from('stores').select('id, name, accommodation_company, api_key_name, api_key_secret, platform').order('name'),
       supabase.from('facilities').select('id, name, external_id, platform, store_id, max_capacity, facility_type'),
     ])
     setStores(storesRes.data || [])
@@ -48,13 +48,15 @@ export default function PullFacilities() {
   async function addFacility(store, listing) {
     const key = `${store.id}:${listing.external_id}`
     setActionLoading(a => ({ ...a, [key]: true }))
+    // WebHotelier listings are hotel room types; HostHub are typically Airbnb rentals
+    const isWebHotelier = listing.platform === 'webhotelier'
     const { error } = await supabase.from('facilities').insert({
       name:          listing.name,
-      facility_type: 'airbnb',
+      facility_type: isWebHotelier ? 'hotel' : 'airbnb',
       external_id:   listing.external_id,
       platform:      listing.platform,
       store_id:      store.id,
-      unit_count:    1,
+      unit_count:    isWebHotelier ? (listing.capacity ?? 1) : 1,
       max_capacity:  listing.capacity ?? null,
     })
     setActionLoading(a => ({ ...a, [key]: false }))
@@ -137,6 +139,9 @@ export default function PullFacilities() {
                 <div className="pull-store-header">
                   <div className="pull-store-identity">
                     <span className="pull-store-name">{store.name}</span>
+                    <span className={`badge ${store.platform === 'webhotelier' ? 'badge-info' : 'badge-neutral'}`} style={{ marginLeft: '0.5rem', fontSize: '0.7rem' }}>
+                      {store.platform === 'webhotelier' ? 'WebHotelier' : 'HostHub'}
+                    </span>
                     {store.accommodation_company && (
                       <span className="pull-store-company">{store.accommodation_company}</span>
                     )}

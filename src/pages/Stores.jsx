@@ -98,6 +98,7 @@ export default function Stores() {
                 <th onClick={() => handleSort('gonnaorder_store_id')} className="sortable">
                   GonnaOrder ID <SortIcon col="gonnaorder_store_id" />
                 </th>
+                <th>Platform</th>
                 <th>API Key</th>
                 <th>Facilities</th>
                 <th>Actions</th>
@@ -109,6 +110,11 @@ export default function Stores() {
                   <td className="cell-primary">{store.name}</td>
                   <td>{store.accommodation_company || <span className="muted">—</span>}</td>
                   <td><code className="code-chip">{store.gonnaorder_store_id}</code></td>
+                  <td>
+                    <span className={`badge ${store.platform === 'webhotelier' ? 'badge-info' : 'badge-neutral'}`}>
+                      {store.platform === 'webhotelier' ? 'WebHotelier' : 'HostHub'}
+                    </span>
+                  </td>
                   <td>
                     {store.api_key_name
                       ? <span className="badge">{store.api_key_name}</span>

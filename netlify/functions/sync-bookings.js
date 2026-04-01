@@ -110,45 +110,86 @@ async function syncHostHub(facility, { lookbackDays }) {
 }
 
 // ─── WebHotelier ──────────────────────────────────────────────────────────────
-// Auth: Authorization: Bearer <api_key_secret from linked store>
-// external_id = WebHotelier property code
+// Auth: HTTP Basic (api_key_name:api_key_secret from linked store)
+// api_key_name = property code / username (e.g. HRZNTEST)
+// Base URL: https://rest.reserve-online.net
+// Booking endpoint: GET /booking/{propertycode}?arrival_from=YYYY-MM-DD&arrival_to=YYYY-MM-DD
+// external_id on facility = room code (e.g. DBL, SGL) — used to filter bookings for this room
 async function syncWebHotelier(facility, { lookbackDays, forwardDays }) {
   const logId    = await startLog(facility.id, 'webhotelier');
   const dateFrom = offsetDate(-lookbackDays);
   const dateTo   = offsetDate(forwardDays);
 
+  const apiName   = facility.stores?.api_key_name;
   const apiSecret = facility.stores?.api_key_secret;
-  if (!apiSecret) {
-    const err = 'No API key secret found on linked store — skipped';
+  if (!apiSecret || !apiName) {
+    const err = 'No API credentials (username + password) found on linked store — skipped';
     await endLog(logId, 'failed', {}, err);
     return { facility_id: facility.id, name: facility.name, provider: 'webhotelier', error: err };
   }
 
+  // For WebHotelier, api_key_name IS the property code AND the Basic Auth username
+  const propertyCode = apiName;
+
   try {
+    const authHeader = 'Basic ' + Buffer.from(`${apiName}:${apiSecret}`).toString('base64');
     const headers = {
-      Authorization: `Bearer ${apiSecret}`,
-      'Content-Type': 'application/json',
+      Authorization: authHeader,
+      Accept: 'application/json',
     };
 
     const res = await fetch(
-      `https://api.webhotelier.net/v1/bookings?property=${facility.external_id}&arrival_from=${dateFrom}&arrival_to=${dateTo}&limit=500`,
+      `https://rest.reserve-online.net/booking/${propertyCode}?arrival_from=${dateFrom}&arrival_to=${dateTo}`,
       { headers }
     );
     if (!res.ok) throw new Error(`WebHotelier API error ${res.status}: ${await res.text()}`);
 
-    const data     = await res.json();
-    const bookings = data.bookings || data.data || [];
+    const data = await res.json();
+    // The API may return an array directly, or an object with a bookings/data key
+    let allBookings = Array.isArray(data) ? data : (data.bookings || data.data || data.results || []);
 
-    const stats = await upsertBookings(facility, 'webhotelier', bookings, (b) => ({
-      external_id:        String(b.id || b.booking_id),
-      room_code:          String(b.room_code || b.room?.code || ''),
-      check_in:           b.arrival || b.check_in,
-      check_out:          b.departure || b.check_out,
-      guest_count:        (b.adults || 0) + (b.children || 0) || 1,
-      breakfast_included: false, // WebHotelier: set per board_id config (future)
-      status:             b.status === 'cancelled' ? 'cancelled' : 'confirmed',
-      raw_data:           b,
-    }), dateFrom);
+    // If this facility has an external_id (room code), filter bookings to that room
+    const roomCode = facility.external_id;
+    let bookings = allBookings;
+    if (roomCode) {
+      bookings = allBookings.filter(b => {
+        const bRoom = b.room_code || b.roomStay?.[0]?.room_type || b.room_type || b.room?.code || '';
+        return String(bRoom) === String(roomCode);
+      });
+    }
+
+    const stats = await upsertBookings(facility, 'webhotelier', bookings, (b) => {
+      // Guest count
+      const adults   = parseInt(b.adults || b.pax?.adults || 0, 10);
+      const children = parseInt(b.children || b.pax?.children || 0, 10);
+      const guests   = (adults + children) || parseInt(b.guests || b.pax || 1, 10);
+
+      // Status
+      const statusCode = (b.statusCode || b.status_code || '').toString().toUpperCase();
+      const statusNum  = b.status;
+      let status = 'confirmed';
+      if (statusCode === 'CANCELLED' || statusNum === 0 || statusNum === '0' || b.cancelled) {
+        status = 'cancelled';
+      }
+
+      // Breakfast: check board type / meal plan
+      const board = (b.board || b.board_code || b.meal_plan ||
+        b.roomStay?.[0]?.rate_description || '').toString().toUpperCase();
+      const breakfastBoards = ['BB', 'HB', 'FB', 'AI', 'BED AND BREAKFAST', 'HALF BOARD',
+        'FULL BOARD', 'ALL INCLUSIVE', 'BREAKFAST'];
+      const breakfast_included = breakfastBoards.some(code => board.includes(code));
+
+      return {
+        external_id:        String(b.id || b.booking_id || b.confirmation_number || ''),
+        room_code:          String(b.room_code || b.roomStay?.[0]?.room_type || roomCode || ''),
+        check_in:           b.arrival || b.check_in || b.checkin || b.arrival_date || '',
+        check_out:          b.departure || b.check_out || b.checkout || b.departure_date || '',
+        guest_count:        guests,
+        breakfast_included,
+        status,
+        raw_data:           b,
+      };
+    }, dateFrom);
 
     await markFacilitySynced(facility.id);
     await endLog(logId, 'success', stats);
