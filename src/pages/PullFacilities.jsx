@@ -56,7 +56,6 @@ export default function PullFacilities() {
       external_id:   listing.external_id,
       platform:      listing.platform,
       store_id:      store.id,
-      unit_count:    isWebHotelier ? (listing.capacity ?? 1) : 1,
       max_capacity:  listing.capacity ?? null,
     })
     setActionLoading(a => ({ ...a, [key]: false }))

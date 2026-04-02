@@ -7,7 +7,6 @@ const EMPTY = {
   facility_type: 'hotel',
   external_id: '',
   platform: 'hosthub',
-  unit_count: 1,
   max_capacity: '',
   store_id: '',
   location_room_id: '',
@@ -21,7 +20,6 @@ export default function FacilityForm({ facility, onClose, onSaved }) {
     facility_type: facility.facility_type || 'hotel',
     external_id: facility.external_id || '',
     platform: facility.platform || 'hosthub',
-    unit_count: facility.unit_count ?? 1,
     max_capacity: facility.max_capacity ?? '',
     store_id: facility.store_id || '',
     location_room_id: facility.location_room_id || '',
@@ -36,13 +34,8 @@ export default function FacilityForm({ facility, onClose, onSaved }) {
     })
   }, [])
 
-  // When switching to Airbnb, default unit_count to 1
   function set(field, value) {
-    setForm(f => {
-      const next = { ...f, [field]: value }
-      if (field === 'facility_type' && value === 'airbnb') next.unit_count = 1
-      return next
-    })
+    setForm(f => ({ ...f, [field]: value }))
   }
 
   async function handleSubmit(e) {
@@ -56,7 +49,6 @@ export default function FacilityForm({ facility, onClose, onSaved }) {
       facility_type: form.facility_type,
       external_id: form.external_id.trim() || null,
       platform: form.platform,
-      unit_count: Number(form.unit_count),
       max_capacity: form.max_capacity !== '' ? Number(form.max_capacity) : null,
       store_id: form.store_id || null,
       location_room_id: form.location_room_id.trim() || null,
@@ -154,23 +146,6 @@ export default function FacilityForm({ facility, onClose, onSaved }) {
           {/* ── Capacity ── */}
           <h3 className="form-section-title">Capacity</h3>
           <div className="form-grid">
-            <div className="field-group">
-              <label htmlFor="f-units">Unit Count <span className="required">*</span></label>
-              <input
-                id="f-units"
-                type="number"
-                min="1"
-                value={form.unit_count}
-                onChange={e => set('unit_count', e.target.value)}
-                required
-                disabled={form.facility_type === 'airbnb'}
-              />
-              <p className="field-hint">
-                {form.facility_type === 'airbnb'
-                  ? 'Airbnbs always have 1 unit (auto-set).'
-                  : 'Number of rooms / units that can be booked simultaneously.'}
-              </p>
-            </div>
             <div className="field-group">
               <label htmlFor="f-capacity">Max Capacity (guests)</label>
               <input

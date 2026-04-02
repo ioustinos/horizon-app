@@ -161,15 +161,12 @@ export default function Facilities() {
                 <th onClick={() => handleSort('name')} className="sortable">
                   Name <SortIcon col="name" />
                 </th>
+                <th>Linked Store</th>
                 <th>Type / Platform</th>
                 <th>External ID</th>
-                <th onClick={() => handleSort('unit_count')} className="sortable">
-                  Units <SortIcon col="unit_count" />
-                </th>
                 <th onClick={() => handleSort('max_capacity')} className="sortable">
                   Capacity <SortIcon col="max_capacity" />
                 </th>
-                <th>Linked Store</th>
                 <th>Last Sync</th>
                 <th>Actions</th>
               </tr>
@@ -185,6 +182,11 @@ export default function Facilities() {
                       {f.secondary_name && <div className="cell-secondary">{f.secondary_name}</div>}
                     </td>
                     <td>
+                      {f.stores?.name
+                        ? <span className="store-tag">{f.stores.name}</span>
+                        : <span className="muted">Unlinked</span>}
+                    </td>
+                    <td>
                       <span className={`badge badge-type ${f.facility_type}`}>{TYPE_LABEL[f.facility_type]}</span>
                       <span className={`badge badge-platform ${f.platform}`}>{PLATFORM_LABEL[f.platform]}</span>
                     </td>
@@ -193,13 +195,7 @@ export default function Facilities() {
                         ? <code className="code-chip">{f.external_id}</code>
                         : <span className="muted">—</span>}
                     </td>
-                    <td className="cell-number">{f.unit_count}</td>
                     <td className="cell-number">{f.max_capacity ?? <span className="muted">—</span>}</td>
-                    <td>
-                      {f.stores?.name
-                        ? <span className="store-tag">{f.stores.name}</span>
-                        : <span className="muted">Unlinked</span>}
-                    </td>
                     <td className="cell-date">
                       {f.last_synced_at ? (
                         <span className="sync-ok">{formatDate(f.last_synced_at)}</span>
