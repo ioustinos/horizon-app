@@ -145,8 +145,9 @@ async function syncWebHotelier(facility, { lookbackDays, forwardDays }) {
     if (!res.ok) throw new Error(`WebHotelier API error ${res.status}: ${await res.text()}`);
 
     const data = await res.json();
-    // The API may return an array directly, or an object with a bookings/data key
-    let allBookings = Array.isArray(data) ? data : (data.bookings || data.data || data.results || []);
+    // WebHotelier API response: { data: { bookings: [...] } } or similar nesting
+    let allBookings = data?.data?.bookings || data?.data?.reservations || data?.bookings ||
+      (Array.isArray(data?.data) ? data.data : (Array.isArray(data) ? data : []));
 
     // If this facility has an external_id (room code), filter bookings to that room
     const roomCode = facility.external_id;

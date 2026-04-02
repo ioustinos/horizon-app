@@ -105,13 +105,14 @@ async function fetchWebHotelierListings(store) {
 
   const data = await res.json();
 
-  // WebHotelier returns an array of room types (or an object with a rooms array)
-  const rooms = Array.isArray(data) ? data : (data.rooms || data.data || []);
+  // WebHotelier API response: { data: { rooms: [...] } }
+  // Handle various nesting levels
+  const rooms = data?.data?.rooms || data?.rooms || (Array.isArray(data?.data) ? data.data : []);
 
   const listings = rooms.map(r => ({
     external_id: String(r.code || r.id),
     name:        r.name || r.title || `Room ${r.code || r.id}`,
-    capacity:    r.capacity?.max_persons ?? r.max_persons ?? r.max_capacity ?? null,
+    capacity:    r.capacity?.max_pers ?? r.capacity?.max_persons ?? r.max_persons ?? r.max_capacity ?? null,
     unit_type:   r.unit_type || null,
     platform:    'webhotelier',
   }));
