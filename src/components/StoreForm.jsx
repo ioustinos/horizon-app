@@ -131,14 +131,18 @@ export default function StoreForm({ store, onClose, onSaved }) {
               >
                 <option value="hosthub">HostHub</option>
                 <option value="webhotelier">WebHotelier</option>
+                <option value="other">Other (no booking platform)</option>
               </select>
               <p className="field-hint">
                 {form.platform === 'webhotelier'
                   ? 'WebHotelier uses Basic Auth (username + password).'
+                  : form.platform === 'other'
+                  ? 'Facilities will be managed manually — no API sync.'
                   : 'HostHub uses an API key for authentication.'}
               </p>
             </div>
           </div>
+          {form.platform !== 'other' && (
           <div className="form-grid">
             <div className="field-group">
               <label htmlFor="s-key-name">
@@ -169,6 +173,7 @@ export default function StoreForm({ store, onClose, onSaved }) {
               />
             </div>
           </div>
+          )}
 
           {error && <p className="form-error">{error}</p>}
 

@@ -66,7 +66,7 @@ export const handler = async (event) => {
   // ── Find all facilities for this store ────────────────────────────────────
   const { data: facilities, error: facErr } = await supabase
     .from('facilities')
-    .select('id')
+    .select('id, platform, max_capacity')
     .eq('store_id', store.id);
 
   if (facErr || !facilities?.length) {
@@ -79,36 +79,56 @@ export const handler = async (event) => {
     });
   }
 
-  const facilityIds = facilities.map(f => f.id);
+  // ── Split facilities by type ──────────────────────────────────────────────
+  const syncedFacilities = facilities.filter(f => f.platform !== 'other');
+  const manualFacilities = facilities.filter(f => f.platform === 'other');
 
-  // ── Find active bookings covering wishDate ────────────────────────────────
-  // check_in ≤ wishDate < check_out
-  const { data: bookings, error: bErr } = await supabase
-    .from('bookings')
-    .select('guest_count, check_in, check_out, breakfast_included, facility_id')
-    .in('facility_id', facilityIds)
-    .eq('status', 'confirmed')
-    .eq('breakfast_included', true)
-    .lte('check_in', wishDate)
-    .gt('check_out', wishDate);
+  let entitled = 0;
+  let bookingsMatched = 0;
+  let earliestCheckIn = null;
+  let earliestCheckOut = null;
 
-  if (bErr) {
-    console.error('Booking lookup error:', bErr);
-    return { statusCode: 500, body: JSON.stringify({ error: 'Booking lookup failed' }) };
+  // ── "Other" (manual) facilities: daily entitlement = max_capacity ────────
+  for (const mf of manualFacilities) {
+    entitled += mf.max_capacity || 0;
   }
 
-  if (!bookings?.length) {
+  // ── Synced facilities: look up bookings covering wishDate ─────────────────
+  if (syncedFacilities.length > 0) {
+    const syncedIds = syncedFacilities.map(f => f.id);
+
+    const { data: bookings, error: bErr } = await supabase
+      .from('bookings')
+      .select('guest_count, check_in, check_out, breakfast_included, facility_id')
+      .in('facility_id', syncedIds)
+      .eq('status', 'confirmed')
+      .eq('breakfast_included', true)
+      .lte('check_in', wishDate)
+      .gt('check_out', wishDate);
+
+    if (bErr) {
+      console.error('Booking lookup error:', bErr);
+      return { statusCode: 500, body: JSON.stringify({ error: 'Booking lookup failed' }) };
+    }
+
+    if (bookings?.length) {
+      entitled += bookings.reduce((sum, b) => sum + b.guest_count, 0);
+      bookingsMatched = bookings.length;
+      const earliest = bookings.reduce((a, b) => a.check_in < b.check_in ? a : b);
+      earliestCheckIn = earliest.check_in;
+      earliestCheckOut = earliest.check_out;
+    }
+  }
+
+  if (entitled === 0) {
     return ok({
       valid: false,
       reason: 'no_booking_found',
       entitled: 0,
       requested: breakfastQty,
-      message: `No active breakfast-included booking found for ${wishDate}.`,
+      message: `No active breakfast entitlement found for ${wishDate}.`,
     });
   }
-
-  // Sum guest counts across all active bookings (e.g. hotel has multiple rooms occupied)
-  const entitled = bookings.reduce((sum, b) => sum + b.guest_count, 0);
 
   if (breakfastQty > entitled) {
     return ok({
@@ -116,20 +136,18 @@ export const handler = async (event) => {
       reason: 'exceeds_entitlement',
       entitled,
       requested: breakfastQty,
-      message: `${breakfastQty} breakfast(s) requested but only ${entitled} guest(s) entitled across all bookings.`,
+      message: `${breakfastQty} breakfast(s) requested but only ${entitled} entitled across all facilities.`,
     });
   }
-
-  const earliest = bookings.reduce((a, b) => a.check_in < b.check_in ? a : b);
 
   return ok({
     valid: true,
     reason: 'booking_match',
     entitled,
     requested: breakfastQty,
-    check_in:  earliest.check_in,
-    check_out: earliest.check_out,
-    bookings_matched: bookings.length,
+    ...(earliestCheckIn && { check_in: earliestCheckIn, check_out: earliestCheckOut }),
+    bookings_matched: bookingsMatched,
+    manual_facilities: manualFacilities.length,
   });
 };
 

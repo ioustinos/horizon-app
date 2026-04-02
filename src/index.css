@@ -464,6 +464,8 @@ a.code-link:hover { text-decoration: underline; }
 
 .badge-platform.hosthub      { background: #dcfce7; color: #15803d; }
 .badge-platform.webhotelier  { background: #fef9c3; color: #854d0e; }
+.badge-platform.other        { background: #e0e7ff; color: #3730a3; }
+.badge-other                 { background: #e0e7ff; color: #3730a3; }
 
 .badge + .badge { margin-left: .35rem; }
 

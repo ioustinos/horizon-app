@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '../supabase'
 import FacilityForm from '../components/FacilityForm'
 
-const PLATFORM_LABEL = { hosthub: 'HostHub', webhotelier: 'WebHotelier' }
+const PLATFORM_LABEL = { hosthub: 'HostHub', webhotelier: 'WebHotelier', other: 'Manual' }
 const TYPE_LABEL     = { hotel: 'Hotel', airbnb: 'Airbnb' }
 
 export default function Facilities() {
@@ -140,6 +140,7 @@ export default function Facilities() {
           <option value="">All platforms</option>
           <option value="hosthub">HostHub</option>
           <option value="webhotelier">WebHotelier</option>
+          <option value="other">Manual</option>
         </select>
         <span className="result-count">{filtered.length} facilit{filtered.length !== 1 ? 'ies' : 'y'}</span>
       </div>
@@ -197,7 +198,9 @@ export default function Facilities() {
                     </td>
                     <td className="cell-number">{f.max_capacity ?? <span className="muted">—</span>}</td>
                     <td className="cell-date">
-                      {f.last_synced_at ? (
+                      {f.platform === 'other' ? (
+                        <span className="muted">N/A — manual</span>
+                      ) : f.last_synced_at ? (
                         <span className="sync-ok">{formatDate(f.last_synced_at)}</span>
                       ) : (
                         <span className="muted">Never synced</span>
@@ -209,14 +212,16 @@ export default function Facilities() {
                       )}
                     </td>
                     <td className="cell-actions">
-                      <button
-                        className={`btn btn-sync btn-sm ${isSyncing ? 'syncing' : ''}`}
-                        onClick={() => handleForceSync(f)}
-                        disabled={!!syncingId}
-                        title="Force sync this facility now"
-                      >
-                        {isSyncing ? '⟳ Syncing…' : '⟳ Sync'}
-                      </button>
+                      {f.platform !== 'other' && (
+                        <button
+                          className={`btn btn-sync btn-sm ${isSyncing ? 'syncing' : ''}`}
+                          onClick={() => handleForceSync(f)}
+                          disabled={!!syncingId}
+                          title="Force sync this facility now"
+                        >
+                          {isSyncing ? '⟳ Syncing…' : '⟳ Sync'}
+                        </button>
+                      )}
                       <button className="btn btn-ghost btn-sm" onClick={() => openEdit(f)}>Edit</button>
                       <button className="btn btn-danger btn-sm" onClick={() => handleDelete(f)}>Delete</button>
                     </td>

@@ -120,11 +120,17 @@ export default function FacilityForm({ facility, onClose, onSaved }) {
               <select id="f-platform" value={form.platform} onChange={e => set('platform', e.target.value)}>
                 <option value="hosthub">HostHub</option>
                 <option value="webhotelier">WebHotelier</option>
+                <option value="other">Other (manual)</option>
               </select>
+              {form.platform === 'other' && (
+                <p className="field-hint">No API sync — breakfast count equals max capacity every day.</p>
+              )}
             </div>
           </div>
 
           {/* ── Platform ── */}
+          {form.platform !== 'other' && (
+          <>
           <h3 className="form-section-title">Platform Connection</h3>
           <p className="form-section-hint">
             API credentials are managed at the Store level and shared across all its facilities.
@@ -142,6 +148,8 @@ export default function FacilityForm({ facility, onClose, onSaved }) {
               <p className="field-hint">The property ID as it appears in the booking platform (e.g. from the HostHub URL).</p>
             </div>
           </div>
+          </>
+          )}
 
           {/* ── Capacity ── */}
           <h3 className="form-section-title">Capacity</h3>
@@ -156,7 +164,11 @@ export default function FacilityForm({ facility, onClose, onSaved }) {
                 onChange={e => set('max_capacity', e.target.value)}
                 placeholder="e.g. 40"
               />
-              <p className="field-hint">Maximum number of guests = maximum breakfasts served.</p>
+              <p className="field-hint">
+                {form.platform === 'other'
+                  ? 'Daily breakfast allowance — this many breakfasts are available every day.'
+                  : 'Maximum number of guests = maximum breakfasts served.'}
+              </p>
             </div>
           </div>
 

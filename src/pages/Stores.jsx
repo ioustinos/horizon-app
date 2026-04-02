@@ -111,8 +111,8 @@ export default function Stores() {
                   <td>{store.accommodation_company || <span className="muted">—</span>}</td>
                   <td><code className="code-chip">{store.gonnaorder_store_id}</code></td>
                   <td>
-                    <span className={`badge ${store.platform === 'webhotelier' ? 'badge-info' : 'badge-neutral'}`}>
-                      {store.platform === 'webhotelier' ? 'WebHotelier' : 'HostHub'}
+                    <span className={`badge ${store.platform === 'webhotelier' ? 'badge-info' : store.platform === 'other' ? 'badge-other' : 'badge-neutral'}`}>
+                      {store.platform === 'webhotelier' ? 'WebHotelier' : store.platform === 'other' ? 'Manual' : 'HostHub'}
                     </span>
                   </td>
                   <td>
