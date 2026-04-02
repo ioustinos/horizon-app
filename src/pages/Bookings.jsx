@@ -204,6 +204,7 @@ export default function Bookings() {
             <thead>
               <tr>
                 <th>Facility</th>
+                <th>Reservation ID</th>
                 <th>Platform</th>
                 <th onClick={() => handleSort('check_in')} className="sortable">
                   Check-in <SortIcon col="check_in" />
@@ -229,6 +230,11 @@ export default function Bookings() {
                     {b.facilities?.stores?.name && (
                       <div className="cell-secondary">{b.facilities.stores.name}</div>
                     )}
+                  </td>
+                  <td>
+                    {b.external_id
+                      ? <code className="code-chip">{b.external_id}</code>
+                      : <span className="muted">—</span>}
                   </td>
                   <td>
                     <span className={`badge badge-platform ${b.provider}`}>
