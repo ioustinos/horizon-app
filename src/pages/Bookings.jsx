@@ -19,7 +19,7 @@ export default function Bookings() {
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo,   setDateTo]   = useState('')
   const [sortKey,  setSortKey]  = useState('check_in')
-  const [sortDir,  setSortDir]  = useState('desc')
+  const [sortDir,  setSortDir]  = useState('asc')
 
   useEffect(() => {
     Promise.all([
@@ -52,7 +52,7 @@ export default function Bookings() {
     let query = supabase
       .from('bookings')
       .select('*, facilities(id, name, facility_type, platform, store_id, stores(id, name))')
-      .order('check_in', { ascending: false })
+      .order('check_in', { ascending: true })
       .limit(500)
 
     if (facilityIdFilter) query = query.eq('facility_id', facilityIdFilter)
@@ -220,6 +220,9 @@ export default function Bookings() {
                 <th onClick={() => handleSort('status')} className="sortable">
                   Status <SortIcon col="status" />
                 </th>
+                <th onClick={() => handleSort('created_at')} className="sortable">
+                  Booked On <SortIcon col="created_at" />
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -255,6 +258,7 @@ export default function Bookings() {
                       {STATUS_LABEL[b.status] || b.status}
                     </span>
                   </td>
+                  <td className="cell-date">{fmt(b.created_at)}</td>
                 </tr>
               ))}
             </tbody>
