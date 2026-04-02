@@ -155,22 +155,26 @@ async function syncWebHotelier(facility, { lookbackDays, forwardDays }) {
       (Array.isArray(data?.data) ? data.data : []);
 
     // If this facility has an external_id (room code), filter bookings to that room type
+    // Actual API shape: roomStay is an OBJECT (not array) with camelCase fields:
+    //   roomStay: { roomType: "DBL", roomName: "Double Room", boardID: null, from: "2026-04-04", to: "2026-04-05", ... }
+    //   rooms: [{ roomNo: 1, adults: 2, children: 0, infants: 0, rates: [...] }]
     const roomCode = facility.external_id;
     let bookings = allBookings;
     if (roomCode) {
       bookings = allBookings.filter(b => {
-        // roomStay is the standard field for room type in WebHotelier booking responses
-        const bRoom = b.roomStay?.[0]?.room_type || b.room_type || '';
+        const bRoom = b.roomStay?.roomType || '';
         return String(bRoom) === String(roomCode);
       });
     }
 
     const stats = await upsertBookings(facility, 'webhotelier', bookings, (b) => {
-      // Guest count from roomStay or top-level fields
-      const stay = b.roomStay?.[0] || {};
-      const adults   = parseInt(stay.adults || b.adults || 1, 10);
-      const children = parseInt(stay.children || b.children || 0, 10);
-      const guests   = adults + children;
+      const stay = b.roomStay || {};
+      // Guest count from rooms[] array (first room entry has adults/children/infants)
+      const room0    = b.rooms?.[0] || {};
+      const adults   = parseInt(room0.adults ?? 1, 10);
+      const children = parseInt(room0.children ?? 0, 10);
+      const infants  = parseInt(room0.infants ?? 0, 10);
+      const guests   = adults + children; // infants typically don't count for breakfast
 
       // Status: status=1 confirmed, status=0 cancelled; statusCode is string
       const statusCode = (b.statusCode || '').toUpperCase();
@@ -179,15 +183,16 @@ async function syncWebHotelier(facility, { lookbackDays, forwardDays }) {
         status = 'cancelled';
       }
 
-      // Breakfast: check board_id from roomStay (OpenTravel numeric codes)
-      const boardId = parseInt(stay.board_id ?? b.board_id ?? -1, 10);
+      // Breakfast: check boardID from roomStay (OpenTravel numeric codes)
+      // boardID is null when no meal plan is configured on the rate
+      const boardId = parseInt(stay.boardID ?? -1, 10);
       const breakfast_included = BREAKFAST_BOARD_IDS.has(boardId);
 
       return {
-        external_id:        String(b.id || b.res_id || ''),
-        room_code:          String(stay.room_type || roomCode || ''),
-        check_in:           stay.checkin || b.checkin || '',
-        check_out:          stay.checkout || b.checkout || '',
+        external_id:        String(b.id || ''),
+        room_code:          String(stay.roomType || roomCode || ''),
+        check_in:           stay.from || '',
+        check_out:          stay.to || '',
         guest_count:        guests,
         breakfast_included,
         status,
