@@ -1,7 +1,7 @@
 // test-webhotelier.js
 // Diagnostic: test WebHotelier API auth and endpoints
 // GET /api/test-webhotelier?property=HRZNTEST&username=HRZNTEST&password=XXX
-// Also supports: ?action=rooms | ?action=bookings
+// Also supports: ?action=rooms | ?action=bookings | ?action=rates
 
 export const handler = async (event) => {
   const params = event.queryStringParameters || {};
@@ -47,21 +47,22 @@ export const handler = async (event) => {
   }
 
   if (action === 'all' || action === 'rates') {
-    await tryFetch('rates', `${baseUrl}/rate/${property}`);
+    await tryFetch('rates', `${baseUrl}/rate/${property}?verbose=2`);
   }
 
   if (action === 'all' || action === 'bookings') {
-    // Try multiple possible booking search endpoints
     const today = new Date().toISOString().split('T')[0];
     const future = new Date(Date.now() + 90 * 86400000).toISOString().split('T')[0];
     const past = new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0];
 
-    await tryFetch('booking_search',
-      `${baseUrl}/booking/${property}?arrival_from=${past}&arrival_to=${future}`);
-    await tryFetch('booking_search_alt',
-      `${baseUrl}/booking/search?property=${property}&from=${past}&to=${future}`);
-    await tryFetch('booking_list',
-      `${baseUrl}/booking/${property}`);
+    // Correct endpoint: GET /reservation with query params
+    // verbose=2 for full booking details, maxrows=100
+    await tryFetch('booking_search_full',
+      `${baseUrl}/reservation?chkin_fromd=${past}&chkin_tod=${future}&verbose=2&maxrows=100`);
+
+    // Also try without date filter to get all bookings
+    await tryFetch('booking_search_all',
+      `${baseUrl}/reservation?verbose=2&maxrows=100`);
   }
 
   return {
