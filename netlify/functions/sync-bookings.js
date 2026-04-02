@@ -149,7 +149,14 @@ async function syncWebHotelier(facility, { lookbackDays, forwardDays }) {
     );
     if (!res.ok) throw new Error(`WebHotelier API error ${res.status}: ${await res.text()}`);
 
-    const data = await res.json();
+    const text = await res.text();
+    if (!text || !text.trim()) throw new Error('WebHotelier API returned empty response');
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (parseErr) {
+      throw new Error(`WebHotelier API returned invalid JSON (${text.length} chars): ${parseErr.message}`);
+    }
     // API response: { data: { reservations: [...] } } or { data: [ ... ] }
     let allBookings = data?.data?.reservations || data?.data?.bookings ||
       (Array.isArray(data?.data) ? data.data : []);
@@ -183,9 +190,9 @@ async function syncWebHotelier(facility, { lookbackDays, forwardDays }) {
         status = 'cancelled';
       }
 
-      // Breakfast: check boardID from roomStay (OpenTravel numeric codes)
-      // boardID is null when no meal plan is configured on the rate
-      const boardId = parseInt(stay.boardID ?? -1, 10);
+      // Breakfast: check board/boardID from roomStay (OpenTravel numeric codes)
+      // API returns "board" (not "boardID") — null when no meal plan is configured
+      const boardId = parseInt(stay.board ?? stay.boardID ?? -1, 10);
       const breakfast_included = BREAKFAST_BOARD_IDS.has(boardId);
 
       return {
