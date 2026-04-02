@@ -235,9 +235,15 @@ export default function Bookings() {
                     )}
                   </td>
                   <td>
-                    {b.external_id
-                      ? <code className="code-chip">{b.external_id}</code>
-                      : <span className="muted">—</span>}
+                    {b.external_id ? (
+                      b.raw_data?.infourl ? (
+                        <a href={b.raw_data.infourl} target="_blank" rel="noopener noreferrer" className="code-chip code-link">
+                          {b.external_id} ↗
+                        </a>
+                      ) : (
+                        <code className="code-chip">{b.external_id}</code>
+                      )
+                    ) : <span className="muted">—</span>}
                   </td>
                   <td>
                     <span className={`badge badge-platform ${b.provider}`}>

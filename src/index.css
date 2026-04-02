@@ -426,6 +426,14 @@ html, body, #root {
   font-size: .78rem;
 }
 
+a.code-link {
+  color: var(--primary);
+  text-decoration: none;
+  display: inline-block;
+  cursor: pointer;
+}
+a.code-link:hover { text-decoration: underline; }
+
 .table-link { color: var(--primary); text-decoration: none; font-size: .8125rem; }
 .table-link:hover { text-decoration: underline; }
 
