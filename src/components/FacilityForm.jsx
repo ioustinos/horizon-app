@@ -34,8 +34,22 @@ export default function FacilityForm({ facility, onClose, onSaved }) {
     })
   }, [])
 
+  const isOther = form.facility_type === 'other_max_pax'
+
   function set(field, value) {
-    setForm(f => ({ ...f, [field]: value }))
+    setForm(f => {
+      const next = { ...f, [field]: value }
+      if (field === 'facility_type') {
+        if (value === 'other_max_pax') {
+          next.platform = 'other'
+          next.external_id = ''
+        } else if (f.facility_type === 'other_max_pax') {
+          // Switching away from Other → reset platform to default
+          next.platform = 'hosthub'
+        }
+      }
+      return next
+    })
   }
 
   async function handleSubmit(e) {
@@ -113,8 +127,10 @@ export default function FacilityForm({ facility, onClose, onSaved }) {
               <select id="f-type" value={form.facility_type} onChange={e => set('facility_type', e.target.value)}>
                 <option value="hotel">Hotel</option>
                 <option value="airbnb">Airbnb</option>
+                <option value="other_max_pax">Other (Max Pax)</option>
               </select>
             </div>
+            {!isOther && (
             <div className="field-group">
               <label htmlFor="f-platform">Platform <span className="required">*</span></label>
               <select id="f-platform" value={form.platform} onChange={e => set('platform', e.target.value)}>
@@ -126,6 +142,7 @@ export default function FacilityForm({ facility, onClose, onSaved }) {
                 <p className="field-hint">No API sync — breakfast count equals max capacity every day.</p>
               )}
             </div>
+            )}
           </div>
 
           {/* ── Platform ── */}
@@ -155,7 +172,7 @@ export default function FacilityForm({ facility, onClose, onSaved }) {
           <h3 className="form-section-title">Capacity</h3>
           <div className="form-grid">
             <div className="field-group">
-              <label htmlFor="f-capacity">Max Capacity (guests)</label>
+              <label htmlFor="f-capacity">Max Capacity (guests){isOther && <span className="required">*</span>}</label>
               <input
                 id="f-capacity"
                 type="number"
@@ -163,10 +180,11 @@ export default function FacilityForm({ facility, onClose, onSaved }) {
                 value={form.max_capacity}
                 onChange={e => set('max_capacity', e.target.value)}
                 placeholder="e.g. 40"
+                required={isOther}
               />
               <p className="field-hint">
-                {form.platform === 'other'
-                  ? 'Daily breakfast allowance — this many breakfasts are available every day.'
+                {isOther || form.platform === 'other'
+                  ? 'Daily breakfast allowance — this is the maximum number of breakfasts validated each day.'
                   : 'Maximum number of guests = maximum breakfasts served.'}
               </p>
             </div>

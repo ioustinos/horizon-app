@@ -3,7 +3,7 @@ import { supabase } from '../supabase'
 import FacilityForm from '../components/FacilityForm'
 
 const PLATFORM_LABEL = { hosthub: 'HostHub', webhotelier: 'WebHotelier', other: 'Manual' }
-const TYPE_LABEL     = { hotel: 'Hotel', airbnb: 'Airbnb' }
+const TYPE_LABEL     = { hotel: 'Hotel', airbnb: 'Airbnb', other_max_pax: 'Other (Max Pax)' }
 
 export default function Facilities() {
   const [facilities, setFacilities] = useState([])
@@ -118,7 +118,7 @@ export default function Facilities() {
       <div className="page-header">
         <div>
           <h1 className="page-title">Facilities</h1>
-          <p className="page-subtitle">Hotels and Airbnbs connected to Horizon</p>
+          <p className="page-subtitle">Hotels, Airbnbs, and other facilities connected to Horizon</p>
         </div>
         <button className="btn btn-primary" onClick={openCreate}>+ New Facility</button>
       </div>
@@ -135,6 +135,7 @@ export default function Facilities() {
           <option value="">All types</option>
           <option value="hotel">Hotel</option>
           <option value="airbnb">Airbnb</option>
+          <option value="other_max_pax">Other (Max Pax)</option>
         </select>
         <select className="filter-select" value={filterPlatform} onChange={e => setFilterPlatform(e.target.value)}>
           <option value="">All platforms</option>

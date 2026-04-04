@@ -12,7 +12,8 @@
 //   4. Sum their quantities → covers requested
 //   5. Find the Horizon store by gonnaorder_store_id
 //   6. Find the facility by location_room_id
-//   7. Find confirmed bookings with breakfast_included covering the wish date
+//   7a. If facility platform = "other" → entitled = max_capacity (no bookings needed)
+//   7b. Otherwise → find confirmed bookings with breakfast_included covering the wish date
 //   8. Double-order check: sum already-validated covers for that facility+date
 //   9. Allow if (already validated + new requested) ≤ entitled guest count
 //  10. Save the order to the orders table
@@ -109,37 +110,54 @@ export const handler = async (event) => {
     });
   }
 
-  // ── Find active bookings covering wishDate ────────────────────────────────
-  // check_in ≤ wishDate < check_out
-  const { data: bookings, error: bErr } = await supabase
-    .from('bookings')
-    .select('id, guest_count, check_in, check_out, breakfast_included')
-    .eq('facility_id', facility.id)
-    .eq('status', 'confirmed')
-    .eq('breakfast_included', true)
-    .lte('check_in', wishDate)
-    .gt('check_out', wishDate);
+  // ── Determine entitled count ───────────────────────────────────────────────
+  let entitled = 0;
+  let matchedBooking = null;
 
-  if (bErr) {
-    console.error('Booking lookup error:', bErr);
-    return error(500, 'Booking lookup failed');
+  if (facility.platform === 'other') {
+    // "Other (Max Pax)" facilities: entitled = max_capacity, no bookings needed
+    if (!facility.max_capacity || facility.max_capacity <= 0) {
+      return ok({
+        valid: false,
+        reason: 'no_capacity_set',
+        entitled: 0,
+        requested: breakfastQty,
+        message: `Facility "${facility.name}" is a max-pax facility but has no capacity configured.`,
+      });
+    }
+    entitled = facility.max_capacity;
+  } else {
+    // ── Find active bookings covering wishDate ──────────────────────────────
+    // check_in ≤ wishDate < check_out
+    const { data: bookings, error: bErr } = await supabase
+      .from('bookings')
+      .select('id, guest_count, check_in, check_out, breakfast_included')
+      .eq('facility_id', facility.id)
+      .eq('status', 'confirmed')
+      .eq('breakfast_included', true)
+      .lte('check_in', wishDate)
+      .gt('check_out', wishDate);
+
+    if (bErr) {
+      console.error('Booking lookup error:', bErr);
+      return error(500, 'Booking lookup failed');
+    }
+
+    if (!bookings?.length) {
+      const result = {
+        valid: false,
+        reason: 'no_booking_found',
+        entitled: 0,
+        requested: breakfastQty,
+        message: `No active breakfast-included booking found for ${wishDate} at "${facility.name}".`,
+      };
+      await saveOrder(goOrderUuid, store.id, facility.id, null, goLocation, wishDate, breakfastQty, 'rejected', 'no_booking_found', order);
+      return ok(result);
+    }
+
+    entitled = bookings.reduce((sum, b) => sum + b.guest_count, 0);
+    matchedBooking = bookings[0];
   }
-
-  if (!bookings?.length) {
-    const result = {
-      valid: false,
-      reason: 'no_booking_found',
-      entitled: 0,
-      requested: breakfastQty,
-      message: `No active breakfast-included booking found for ${wishDate} at "${facility.name}".`,
-    };
-    await saveOrder(goOrderUuid, store.id, facility.id, null, goLocation, wishDate, breakfastQty, 'rejected', 'no_booking_found', order);
-    return ok(result);
-  }
-
-  // Sum entitled guests across all matching bookings for this facility
-  const entitled = bookings.reduce((sum, b) => sum + b.guest_count, 0);
-  const matchedBooking = bookings[0]; // primary booking
 
   // ── Double-order check ────────────────────────────────────────────────────
   // How many covers have already been used today for this facility?
@@ -163,34 +181,42 @@ export const handler = async (event) => {
   const totalAfterThis = alreadyValidated + breakfastQty;
 
   if (totalAfterThis > entitled) {
+    const reason = facility.platform === 'other' ? 'exceeds_max_pax' : 'exceeds_entitlement';
     const result = {
       valid: false,
-      reason: 'exceeds_entitlement',
+      reason,
       entitled,
       requested: breakfastQty,
       already_validated: alreadyValidated,
       remaining: Math.max(0, entitled - alreadyValidated),
       message: `${breakfastQty} breakfast(s) requested, but only ${entitled - alreadyValidated} remaining (${alreadyValidated} already validated, ${entitled} entitled).`,
     };
-    await saveOrder(goOrderUuid, store.id, facility.id, matchedBooking.id, goLocation, wishDate, breakfastQty, 'rejected', 'exceeds_entitlement', order);
+    await saveOrder(goOrderUuid, store.id, facility.id, matchedBooking?.id || null, goLocation, wishDate, breakfastQty, 'rejected', reason, order);
     return ok(result);
   }
 
   // ── Success ───────────────────────────────────────────────────────────────
-  await saveOrder(goOrderUuid, store.id, facility.id, matchedBooking.id, goLocation, wishDate, breakfastQty, 'validated', 'booking_match', order);
+  const successReason = facility.platform === 'other' ? 'max_pax_match' : 'booking_match';
+  await saveOrder(goOrderUuid, store.id, facility.id, matchedBooking?.id || null, goLocation, wishDate, breakfastQty, 'validated', successReason, order);
 
-  return ok({
+  const response = {
     valid: true,
-    reason: 'booking_match',
+    reason: successReason,
     entitled,
     requested: breakfastQty,
     already_validated: alreadyValidated,
     remaining: entitled - totalAfterThis,
-    check_in: matchedBooking.check_in,
-    check_out: matchedBooking.check_out,
-    bookings_matched: bookings.length,
     facility_name: facility.name,
-  });
+  };
+
+  // Add booking details only for non-"other" facilities
+  if (matchedBooking) {
+    response.check_in = matchedBooking.check_in;
+    response.check_out = matchedBooking.check_out;
+    response.bookings_matched = 1;
+  }
+
+  return ok(response);
 };
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
