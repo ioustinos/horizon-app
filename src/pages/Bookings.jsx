@@ -87,6 +87,36 @@ export default function Bookings() {
     })
   }, [bookings, sortKey, sortDir])
 
+  // Overlapping booking detection
+  // Two confirmed bookings for the same facility overlap if their date ranges intersect
+  const overlappingIds = useMemo(() => {
+    const ids = new Set()
+    const confirmed = sorted.filter(b => b.status === 'confirmed')
+    // Group by facility_id
+    const byFacility = {}
+    for (const b of confirmed) {
+      const fid = b.facility_id
+      if (!fid) continue
+      if (!byFacility[fid]) byFacility[fid] = []
+      byFacility[fid].push(b)
+    }
+    // Check pairwise overlaps within each facility
+    for (const fid of Object.keys(byFacility)) {
+      const group = byFacility[fid]
+      for (let i = 0; i < group.length; i++) {
+        for (let j = i + 1; j < group.length; j++) {
+          const a = group[i], b = group[j]
+          // Overlap: a.check_in < b.check_out AND b.check_in < a.check_out
+          if (a.check_in < b.check_out && b.check_in < a.check_out) {
+            ids.add(a.id)
+            ids.add(b.id)
+          }
+        }
+      }
+    }
+    return ids
+  }, [sorted])
+
   // Summary stats
   const stats = useMemo(() => {
     const confirmed = sorted.filter(b => b.status === 'confirmed')
@@ -229,7 +259,30 @@ export default function Bookings() {
               {sorted.map(b => (
                 <tr key={b.id} className={b.status === 'cancelled' ? 'row-cancelled' : ''}>
                   <td>
-                    <div className="cell-primary">{b.facilities?.name || '—'}</div>
+                    <div className="cell-primary" style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                      {b.facilities?.name || '—'}
+                      {overlappingIds.has(b.id) && (
+                        <span
+                          title="Overlapping booking — review dates"
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            width: '18px',
+                            height: '18px',
+                            borderRadius: '50%',
+                            background: '#fbbf24',
+                            color: '#78350f',
+                            fontSize: '12px',
+                            fontWeight: 700,
+                            cursor: 'help',
+                            flexShrink: 0,
+                          }}
+                        >
+                          !
+                        </span>
+                      )}
+                    </div>
                     {b.facilities?.stores?.name && (
                       <div className="cell-secondary">{b.facilities.stores.name}</div>
                     )}
