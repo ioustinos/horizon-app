@@ -142,13 +142,14 @@ export const handler = async (event) => {
   const matchedBooking = bookings[0]; // primary booking
 
   // ── Double-order check ────────────────────────────────────────────────────
-  // How many covers have already been validated today for this facility?
+  // How many covers have already been used today for this facility?
+  // Count both 'validated' (pending) and 'fulfilled' (closed) orders.
   const { data: existingOrders, error: ordErr } = await supabase
     .from('orders')
     .select('covers_requested')
     .eq('facility_id', facility.id)
     .eq('wish_date', wishDate)
-    .eq('status', 'validated');
+    .in('status', ['validated', 'fulfilled']);
 
   if (ordErr) {
     console.error('Double-order check error:', ordErr);
