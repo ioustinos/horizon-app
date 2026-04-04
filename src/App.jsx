@@ -9,6 +9,7 @@ import Bookings        from './pages/Bookings'
 import SyncLogs        from './pages/SyncLogs'
 import Settings        from './pages/Settings'
 import PullFacilities  from './pages/PullFacilities'
+import TestWebhook     from './pages/TestWebhook'
 
 export default function App() {
   return (
@@ -31,6 +32,7 @@ export default function App() {
             <Route path="sync-logs"     element={<SyncLogs />} />
             <Route path="pull-listings" element={<PullFacilities />} />
             <Route path="settings"      element={<Settings />} />
+            <Route path="test-webhook"  element={<TestWebhook />} />
           </Route>
           <Route path="*" element={<Navigate to="/admin" replace />} />
         </Routes>
