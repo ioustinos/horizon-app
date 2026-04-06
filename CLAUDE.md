@@ -27,9 +27,30 @@ The PAT for git push is stored in the remote URL already. Never use browser-base
 ├── netlify/functions/
 │   ├── validate-breakfast.js   # GonnaOrder validation endpoint (POST)
 │   ├── sync-bookings.js        # Syncs WebHotelier + HostHub → Supabase
+│   ├── force-sync.js           # Manual per-room sync trigger
+│   ├── fetch-listings.js       # Fetches listings from platforms
+│   ├── order-webhook.js        # GonnaOrder lifecycle webhook
 │   └── test-hosthub.js         # Diagnostic: test HostHub API auth
-├── src/                        # React frontend (store config UI — TBD)
-├── netlify.toml                # build: npm run build → dist/, functions dir
+├── src/
+│   ├── pages/
+│   │   ├── Rooms.jsx           # Room management (was Facilities)
+│   │   ├── Bookings.jsx        # Booking viewer
+│   │   ├── SyncLogs.jsx        # Sync history
+│   │   ├── PullListings.jsx    # Onboard listings from platforms
+│   │   ├── TestWebhook.jsx     # Test validation endpoint
+│   │   ├── Stores.jsx          # Store management
+│   │   ├── Settings.jsx        # App settings
+│   │   ├── AdminLayout.jsx     # Sidebar + layout
+│   │   └── Login.jsx           # Auth
+│   ├── components/
+│   │   ├── RoomForm.jsx        # Room create/edit modal (was FacilityForm)
+│   │   ├── StoreForm.jsx       # Store create/edit modal
+│   │   └── ProtectedRoute.jsx  # Auth guard
+│   ├── contexts/AuthContext.jsx
+│   ├── supabase.js
+│   ├── App.jsx
+│   └── index.css
+├── netlify.toml
 ├── package.json
 └── vite.config.js
 ```
@@ -48,15 +69,23 @@ The PAT for git push is stored in the remote URL already. Never use browser-base
 
 ### GonnaOrder Validation
 - Endpoint: POST /api/validate-breakfast
-- Checks for HORIZON_BREAKFAST tagged items in the order
-- Looks up booking in Supabase by store + location + date
+- Checks for breakfast items (offer.stockLevel === 0 && offer.isStockCheckEnabled === true)
+- Looks up room by internal ID via `locationExternalId` field from GonnaOrder
+- Room matching: `rooms.id = order.locationExternalId` (our Horizon room UUID)
 
 ## Supabase
-- Project: horizon (check Supabase MCP for project ID)
-- Tables: stores, room_mappings, bookings, sync_logs
+- Project: horizon (project ID: gdreamjjadijdfoeymok)
+- Tables: stores, rooms (was facilities), room_mappings, bookings, orders, sync_logs, settings
+- Key columns renamed: room_type (was facility_type), platform_id (was external_id)
+- FK columns: room_id (was facility_id) in bookings, orders, sync_logs, room_mappings
 - Env vars: SUPABASE_URL, SUPABASE_SERVICE_KEY set on Netlify
 
 ## Environment Variables (set on Netlify)
 - SUPABASE_URL
 - SUPABASE_SERVICE_KEY
 - HOSTHUB_API_KEY (demo key — needs to be verified)
+
+## Naming Convention
+- "Room" = any accommodation unit (hotel room, Airbnb rental, etc.) — previously called "Facility"
+- "Platform ID" = the property/room ID from the booking platform (HostHub or WebHotelier) — previously called "External ID"
+- "Room ID" = our internal Horizon UUID — entered into GonnaOrder's location externalId field

@@ -66,7 +66,7 @@ async function fetchHostHubListings(store) {
 
   const data = await res.json();
   const listings = (data.data || []).map(r => ({
-    external_id: String(r.id),
+    platform_id: String(r.id),
     name:        r.name || r.title || r.nickname || `Rental ${r.id}`,
     capacity:    r.max_capacity ?? r.accommodates ?? r.max_guests ?? null,
     platform:    'hosthub',
@@ -110,7 +110,7 @@ async function fetchWebHotelierListings(store) {
   const rooms = data?.data?.rooms || data?.rooms || (Array.isArray(data?.data) ? data.data : []);
 
   const listings = rooms.map(r => ({
-    external_id: String(r.code || r.id),
+    platform_id: String(r.code || r.id),
     name:        r.name || r.title || `Room ${r.code || r.id}`,
     capacity:    r.capacity?.max_pers ?? r.capacity?.max_persons ?? r.max_persons ?? r.max_capacity ?? null,
     unit_type:   r.unit_type || null,

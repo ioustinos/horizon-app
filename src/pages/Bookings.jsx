@@ -6,12 +6,12 @@ const PROVIDER_LABEL = { hosthub: 'HostHub', webhotelier: 'WebHotelier' }
 
 export default function Bookings() {
   const [bookings, setBookings]     = useState([])
-  const [facilities, setFacilities] = useState([])
+  const [rooms, setRooms]           = useState([])
   const [stores, setStores]         = useState([])
   const [loading, setLoading]       = useState(true)
 
   // Filters
-  const [filterFacility,  setFilterFacility]  = useState('')
+  const [filterRoom,      setFilterRoom]      = useState('')
   const [filterStore,     setFilterStore]     = useState('')
   const [filterStatus,    setFilterStatus]    = useState('')
   const [filterBreakfast, setFilterBreakfast] = useState('')
@@ -23,26 +23,25 @@ export default function Bookings() {
 
   useEffect(() => {
     Promise.all([
-      supabase.from('facilities').select('id, name, store_id').order('name'),
+      supabase.from('rooms').select('id, name, store_id').order('name'),
       supabase.from('stores').select('id, name').order('name'),
-    ]).then(([facRes, storeRes]) => {
-      setFacilities(facRes.data || [])
+    ]).then(([roomRes, storeRes]) => {
+      setRooms(roomRes.data || [])
       setStores(storeRes.data || [])
     })
   }, [])
 
   useEffect(() => {
     fetchBookings()
-  }, [filterFacility, filterStore, filterStatus, filterBreakfast, filterProvider, dateFrom, dateTo])
+  }, [filterRoom, filterStore, filterStatus, filterBreakfast, filterProvider, dateFrom, dateTo])
 
   async function fetchBookings() {
     setLoading(true)
 
-    // If filtering by store, resolve which facility IDs belong to it
-    let facilityIdFilter = filterFacility || null
-    if (filterStore && !filterFacility) {
-      const storeFacilities = facilities.filter(f => f.store_id === filterStore)
-      if (storeFacilities.length === 0) {
+    let roomIdFilter = filterRoom || null
+    if (filterStore && !filterRoom) {
+      const storeRooms = rooms.filter(f => f.store_id === filterStore)
+      if (storeRooms.length === 0) {
         setBookings([])
         setLoading(false)
         return
@@ -51,11 +50,11 @@ export default function Bookings() {
 
     let query = supabase
       .from('bookings')
-      .select('*, facilities(id, name, facility_type, platform, store_id, stores(id, name))')
+      .select('*, rooms(id, name, room_type, platform, store_id, stores(id, name))')
       .order('check_in', { ascending: true })
       .limit(500)
 
-    if (facilityIdFilter) query = query.eq('facility_id', facilityIdFilter)
+    if (roomIdFilter)    query = query.eq('room_id', roomIdFilter)
     if (filterStatus)    query = query.eq('status', filterStatus)
     if (filterProvider)  query = query.eq('provider', filterProvider)
     if (filterBreakfast !== '') query = query.eq('breakfast_included', filterBreakfast === 'yes')
@@ -65,9 +64,8 @@ export default function Bookings() {
     const { data, error } = await query
     if (!error) {
       let results = data || []
-      // Client-side store filter (via nested facility.store_id)
       if (filterStore) {
-        results = results.filter(b => b.facilities?.store_id === filterStore)
+        results = results.filter(b => b.rooms?.store_id === filterStore)
       }
       setBookings(results)
     }
@@ -87,26 +85,21 @@ export default function Bookings() {
     })
   }, [bookings, sortKey, sortDir])
 
-  // Overlapping booking detection
-  // Two confirmed bookings for the same facility overlap if their date ranges intersect
   const overlappingIds = useMemo(() => {
     const ids = new Set()
     const confirmed = sorted.filter(b => b.status === 'confirmed')
-    // Group by facility_id
-    const byFacility = {}
+    const byRoom = {}
     for (const b of confirmed) {
-      const fid = b.facility_id
-      if (!fid) continue
-      if (!byFacility[fid]) byFacility[fid] = []
-      byFacility[fid].push(b)
+      const rid = b.room_id
+      if (!rid) continue
+      if (!byRoom[rid]) byRoom[rid] = []
+      byRoom[rid].push(b)
     }
-    // Check pairwise overlaps within each facility
-    for (const fid of Object.keys(byFacility)) {
-      const group = byFacility[fid]
+    for (const rid of Object.keys(byRoom)) {
+      const group = byRoom[rid]
       for (let i = 0; i < group.length; i++) {
         for (let j = i + 1; j < group.length; j++) {
           const a = group[i], b = group[j]
-          // Overlap: a.check_in < b.check_out AND b.check_in < a.check_out
           if (a.check_in < b.check_out && b.check_in < a.check_out) {
             ids.add(a.id)
             ids.add(b.id)
@@ -117,7 +110,6 @@ export default function Bookings() {
     return ids
   }, [sorted])
 
-  // Summary stats
   const stats = useMemo(() => {
     const confirmed = sorted.filter(b => b.status === 'confirmed')
     const totalGuests = confirmed.reduce((s, b) => s + (b.guest_count || 0), 0)
@@ -143,7 +135,7 @@ export default function Bookings() {
   }
 
   function clearFilters() {
-    setFilterFacility('')
+    setFilterRoom('')
     setFilterStore('')
     setFilterStatus('')
     setFilterBreakfast('')
@@ -152,14 +144,14 @@ export default function Bookings() {
     setDateTo('')
   }
 
-  const hasFilters = filterFacility || filterStore || filterStatus || filterBreakfast || filterProvider || dateFrom || dateTo
+  const hasFilters = filterRoom || filterStore || filterStatus || filterBreakfast || filterProvider || dateFrom || dateTo
 
   return (
     <div className="page">
       <div className="page-header">
         <div>
           <h1 className="page-title">Bookings</h1>
-          <p className="page-subtitle">Live view of synced bookings across all facilities</p>
+          <p className="page-subtitle">Live view of synced bookings across all rooms</p>
         </div>
       </div>
 
@@ -186,13 +178,13 @@ export default function Bookings() {
       {/* Filters */}
       <div className="filter-panel">
         <div className="filter-row">
-          <select className="filter-select" value={filterStore} onChange={e => { setFilterStore(e.target.value); setFilterFacility('') }}>
+          <select className="filter-select" value={filterStore} onChange={e => { setFilterStore(e.target.value); setFilterRoom('') }}>
             <option value="">All stores</option>
             {stores.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
-          <select className="filter-select" value={filterFacility} onChange={e => { setFilterFacility(e.target.value); setFilterStore('') }}>
-            <option value="">All facilities</option>
-            {facilities.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+          <select className="filter-select" value={filterRoom} onChange={e => { setFilterRoom(e.target.value); setFilterStore('') }}>
+            <option value="">All rooms</option>
+            {rooms.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
           </select>
           <select className="filter-select" value={filterProvider} onChange={e => setFilterProvider(e.target.value)}>
             <option value="">All platforms</option>
@@ -226,14 +218,14 @@ export default function Bookings() {
         <div className="loading-state"><div className="spinner" /></div>
       ) : sorted.length === 0 ? (
         <div className="empty-state">
-          <p>{hasFilters ? 'No bookings match your filters.' : 'No bookings synced yet. Run a sync from the Facilities page.'}</p>
+          <p>{hasFilters ? 'No bookings match your filters.' : 'No bookings synced yet. Run a sync from the Rooms page.'}</p>
         </div>
       ) : (
         <div className="table-wrapper">
           <table className="data-table">
             <thead>
               <tr>
-                <th>Facility</th>
+                <th>Room</th>
                 <th>Reservation ID</th>
                 <th>Platform</th>
                 <th onClick={() => handleSort('check_in')} className="sortable">
@@ -260,7 +252,7 @@ export default function Bookings() {
                 <tr key={b.id} className={b.status === 'cancelled' ? 'row-cancelled' : ''}>
                   <td>
                     <div className="cell-primary" style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                      {b.facilities?.name || '—'}
+                      {b.rooms?.name || '—'}
                       {overlappingIds.has(b.id) && (
                         <span
                           title="Overlapping booking — review dates"
@@ -283,8 +275,8 @@ export default function Bookings() {
                         </span>
                       )}
                     </div>
-                    {b.facilities?.stores?.name && (
-                      <div className="cell-secondary">{b.facilities.stores.name}</div>
+                    {b.rooms?.stores?.name && (
+                      <div className="cell-secondary">{b.rooms.stores.name}</div>
                     )}
                   </td>
                   <td>

@@ -10,41 +10,40 @@ const STATUS_COLOR = {
 const PROVIDER_LABEL = { hosthub: 'HostHub', webhotelier: 'WebHotelier' }
 
 export default function SyncLogs() {
-  const [logs, setLogs]             = useState([])
-  const [facilities, setFacilities] = useState([])
-  const [loading, setLoading]       = useState(true)
-  const [expanded, setExpanded]     = useState(null)   // log id with expanded error
+  const [logs, setLogs]         = useState([])
+  const [rooms, setRooms]       = useState([])
+  const [loading, setLoading]   = useState(true)
+  const [expanded, setExpanded] = useState(null)
 
   // Filters
-  const [filterFacility, setFilterFacility] = useState('')
+  const [filterRoom,     setFilterRoom]     = useState('')
   const [filterStatus,   setFilterStatus]   = useState('')
   const [filterProvider, setFilterProvider] = useState('')
 
   useEffect(() => {
-    supabase.from('facilities').select('id, name').order('name')
-      .then(({ data }) => setFacilities(data || []))
+    supabase.from('rooms').select('id, name').order('name')
+      .then(({ data }) => setRooms(data || []))
   }, [])
 
   const fetchLogs = useCallback(async () => {
     setLoading(true)
     let query = supabase
       .from('sync_logs')
-      .select('*, facilities(id, name, platform)')
+      .select('*, rooms(id, name, platform)')
       .order('started_at', { ascending: false })
       .limit(200)
 
-    if (filterFacility) query = query.eq('facility_id', filterFacility)
+    if (filterRoom)     query = query.eq('room_id', filterRoom)
     if (filterStatus)   query = query.eq('status', filterStatus)
     if (filterProvider) query = query.eq('provider', filterProvider)
 
     const { data, error } = await query
     if (!error) setLogs(data || [])
     setLoading(false)
-  }, [filterFacility, filterStatus, filterProvider])
+  }, [filterRoom, filterStatus, filterProvider])
 
   useEffect(() => { fetchLogs() }, [fetchLogs])
 
-  // Summary stats from visible logs
   const stats = useMemo(() => {
     const total    = logs.length
     const success  = logs.filter(l => l.status === 'success').length
@@ -80,7 +79,7 @@ export default function SyncLogs() {
     return `${Math.floor(seconds / 86400)}d ago`
   }
 
-  const hasFilters = filterFacility || filterStatus || filterProvider
+  const hasFilters = filterRoom || filterStatus || filterProvider
 
   return (
     <div className="page">
@@ -130,9 +129,9 @@ export default function SyncLogs() {
 
       {/* Filters */}
       <div className="toolbar">
-        <select className="filter-select" value={filterFacility} onChange={e => setFilterFacility(e.target.value)}>
-          <option value="">All facilities</option>
-          {facilities.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+        <select className="filter-select" value={filterRoom} onChange={e => setFilterRoom(e.target.value)}>
+          <option value="">All rooms</option>
+          {rooms.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
         </select>
         <select className="filter-select" value={filterProvider} onChange={e => setFilterProvider(e.target.value)}>
           <option value="">All platforms</option>
@@ -147,7 +146,7 @@ export default function SyncLogs() {
         </select>
         {hasFilters && (
           <button className="btn btn-ghost btn-sm" onClick={() => {
-            setFilterFacility(''); setFilterStatus(''); setFilterProvider('')
+            setFilterRoom(''); setFilterStatus(''); setFilterProvider('')
           }}>Clear</button>
         )}
         <span className="result-count">{logs.length} log{logs.length !== 1 ? 's' : ''}</span>
@@ -157,28 +156,25 @@ export default function SyncLogs() {
         <div className="loading-state"><div className="spinner" /></div>
       ) : logs.length === 0 ? (
         <div className="empty-state">
-          <p>{hasFilters ? 'No logs match your filters.' : 'No sync runs yet. Trigger a sync from the Facilities page.'}</p>
+          <p>{hasFilters ? 'No logs match your filters.' : 'No sync runs yet. Trigger a sync from the Rooms page.'}</p>
         </div>
       ) : (
         <div className="log-list">
           {logs.map(log => (
             <div key={log.id} className={`log-row ${STATUS_COLOR[log.status] || ''}`}>
               <div className="log-main">
-                {/* Status pill */}
                 <span className={`log-status-pill ${log.status}`}>
                   {log.status === 'running' && <span className="log-spinner" />}
                   {log.status}
                 </span>
 
-                {/* Facility + provider */}
                 <div className="log-identity">
-                  <span className="log-facility">{log.facilities?.name || 'Unknown facility'}</span>
+                  <span className="log-facility">{log.rooms?.name || 'Unknown room'}</span>
                   <span className={`badge badge-platform ${log.provider}`}>
                     {PROVIDER_LABEL[log.provider] || log.provider}
                   </span>
                 </div>
 
-                {/* Timing */}
                 <div className="log-timing">
                   <span className="log-time" title={fmtTime(log.started_at)}>
                     {timeAgo(log.started_at)}
@@ -186,7 +182,6 @@ export default function SyncLogs() {
                   <span className="log-duration">({duration(log)})</span>
                 </div>
 
-                {/* Counts */}
                 {log.status !== 'failed' && (
                   <div className="log-counts">
                     <span className="log-count-item" title="Bookings fetched from API">
@@ -212,7 +207,6 @@ export default function SyncLogs() {
                   </div>
                 )}
 
-                {/* Error toggle */}
                 {log.error_message && (
                   <button
                     className="log-error-toggle"
@@ -223,7 +217,6 @@ export default function SyncLogs() {
                 )}
               </div>
 
-              {/* Expanded error */}
               {expanded === log.id && log.error_message && (
                 <div className="log-error-body">
                   <pre className="log-error-pre">{log.error_message}</pre>

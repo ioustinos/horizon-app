@@ -4,25 +4,23 @@ import { supabase } from '../supabase'
 const EMPTY = {
   name: '',
   secondary_name: '',
-  facility_type: 'hotel',
-  external_id: '',
+  room_type: 'hotel',
+  platform_id: '',
   platform: 'hosthub',
   max_capacity: '',
   store_id: '',
-  location_room_id: '',
 }
 
-export default function FacilityForm({ facility, onClose, onSaved }) {
-  const isEdit = !!facility
+export default function RoomForm({ room, onClose, onSaved }) {
+  const isEdit = !!room
   const [form, setForm] = useState(isEdit ? {
-    name: facility.name || '',
-    secondary_name: facility.secondary_name || '',
-    facility_type: facility.facility_type || 'hotel',
-    external_id: facility.external_id || '',
-    platform: facility.platform || 'hosthub',
-    max_capacity: facility.max_capacity ?? '',
-    store_id: facility.store_id || '',
-    location_room_id: facility.location_room_id || '',
+    name: room.name || '',
+    secondary_name: room.secondary_name || '',
+    room_type: room.room_type || 'hotel',
+    platform_id: room.platform_id || '',
+    platform: room.platform || 'hosthub',
+    max_capacity: room.max_capacity ?? '',
+    store_id: room.store_id || '',
   } : { ...EMPTY })
   const [stores, setStores] = useState([])
   const [error, setError] = useState('')
@@ -34,17 +32,16 @@ export default function FacilityForm({ facility, onClose, onSaved }) {
     })
   }, [])
 
-  const isOther = form.facility_type === 'other_max_pax'
+  const isOther = form.room_type === 'other_max_pax'
 
   function set(field, value) {
     setForm(f => {
       const next = { ...f, [field]: value }
-      if (field === 'facility_type') {
+      if (field === 'room_type') {
         if (value === 'other_max_pax') {
           next.platform = 'other'
-          next.external_id = ''
-        } else if (f.facility_type === 'other_max_pax') {
-          // Switching away from Other → reset platform to default
+          next.platform_id = ''
+        } else if (f.room_type === 'other_max_pax') {
           next.platform = 'hosthub'
         }
       }
@@ -60,20 +57,19 @@ export default function FacilityForm({ facility, onClose, onSaved }) {
     const payload = {
       name: form.name.trim(),
       secondary_name: form.secondary_name.trim() || null,
-      facility_type: form.facility_type,
-      external_id: form.external_id.trim() || null,
+      room_type: form.room_type,
+      platform_id: form.platform_id.trim() || null,
       platform: form.platform,
       max_capacity: form.max_capacity !== '' ? Number(form.max_capacity) : null,
       store_id: form.store_id || null,
-      location_room_id: form.location_room_id.trim() || null,
       updated_at: new Date().toISOString(),
     }
 
     let error
     if (isEdit) {
-      ;({ error } = await supabase.from('facilities').update(payload).eq('id', facility.id))
+      ;({ error } = await supabase.from('rooms').update(payload).eq('id', room.id))
     } else {
-      ;({ error } = await supabase.from('facilities').insert(payload))
+      ;({ error } = await supabase.from('rooms').insert(payload))
     }
 
     if (error) {
@@ -88,16 +84,36 @@ export default function FacilityForm({ facility, onClose, onSaved }) {
     <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="modal modal-wide">
         <div className="modal-header">
-          <h2>{isEdit ? 'Edit Facility' : 'New Facility'}</h2>
+          <h2>{isEdit ? 'Edit Room' : 'New Room'}</h2>
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
 
         <form onSubmit={handleSubmit} className="modal-body">
           {/* ── Identity ── */}
           <h3 className="form-section-title">Identity</h3>
+
+          {/* Show internal ID when editing */}
+          {isEdit && (
+            <div className="field-group span-2" style={{ marginBottom: '0.25rem' }}>
+              <label>Horizon Room ID</label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <code className="code-chip" style={{ fontSize: '0.85rem', padding: '0.35rem 0.65rem' }}>{room.id}</code>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => navigator.clipboard.writeText(room.id)}
+                  title="Copy to clipboard"
+                >
+                  Copy
+                </button>
+              </div>
+              <p className="field-hint">Use this ID in GonnaOrder's location external ID field to link this room.</p>
+            </div>
+          )}
+
           <div className="form-grid">
             <div className="field-group span-2">
-              <label htmlFor="f-name">Facility Name <span className="required">*</span></label>
+              <label htmlFor="f-name">Room Name <span className="required">*</span></label>
               <input
                 id="f-name"
                 type="text"
@@ -123,8 +139,8 @@ export default function FacilityForm({ facility, onClose, onSaved }) {
 
           <div className="form-grid">
             <div className="field-group">
-              <label htmlFor="f-type">Facility Type <span className="required">*</span></label>
-              <select id="f-type" value={form.facility_type} onChange={e => set('facility_type', e.target.value)}>
+              <label htmlFor="f-type">Room Type <span className="required">*</span></label>
+              <select id="f-type" value={form.room_type} onChange={e => set('room_type', e.target.value)}>
                 <option value="hotel">Hotel</option>
                 <option value="airbnb">Airbnb</option>
                 <option value="other_max_pax">Other (Max Pax)</option>
@@ -150,16 +166,16 @@ export default function FacilityForm({ facility, onClose, onSaved }) {
           <>
           <h3 className="form-section-title">Platform Connection</h3>
           <p className="form-section-hint">
-            API credentials are managed at the Store level and shared across all its facilities.
+            API credentials are managed at the Store level and shared across all its rooms.
           </p>
           <div className="form-grid">
             <div className="field-group span-2">
-              <label htmlFor="f-external-id">Platform ID (External ID)</label>
+              <label htmlFor="f-platform-id">Platform ID</label>
               <input
-                id="f-external-id"
+                id="f-platform-id"
                 type="text"
-                value={form.external_id}
-                onChange={e => set('external_id', e.target.value)}
+                value={form.platform_id}
+                onChange={e => set('platform_id', e.target.value)}
                 placeholder="ID assigned by HostHub or WebHotelier"
               />
               <p className="field-hint">The property ID as it appears in the booking platform (e.g. from the HostHub URL).</p>
@@ -201,18 +217,7 @@ export default function FacilityForm({ facility, onClose, onSaved }) {
                   <option key={s.id} value={s.id}>{s.name}</option>
                 ))}
               </select>
-              <p className="field-hint">The GonnaOrder store that serves this facility.</p>
-            </div>
-            <div className="field-group">
-              <label htmlFor="f-room-id">Location / Room ID</label>
-              <input
-                id="f-room-id"
-                type="text"
-                value={form.location_room_id}
-                onChange={e => set('location_room_id', e.target.value)}
-                placeholder="Internal recogniser"
-              />
-              <p className="field-hint">Used internally to match GonnaOrder location IDs.</p>
+              <p className="field-hint">The GonnaOrder store that serves this room.</p>
             </div>
           </div>
 
@@ -221,7 +226,7 @@ export default function FacilityForm({ facility, onClose, onSaved }) {
           <div className="modal-footer">
             <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
             <button type="submit" className="btn btn-primary" disabled={saving}>
-              {saving ? 'Saving…' : isEdit ? 'Save Changes' : 'Create Facility'}
+              {saving ? 'Saving…' : isEdit ? 'Save Changes' : 'Create Room'}
             </button>
           </div>
         </form>

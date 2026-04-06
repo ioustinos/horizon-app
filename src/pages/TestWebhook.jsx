@@ -66,9 +66,9 @@ function newBreakfastItem() {
 
 export default function TestWebhook() {
   const [stores, setStores] = useState([])
-  const [facilities, setFacilities] = useState([])
+  const [rooms, setRooms] = useState([])
   const [selectedStoreId, setSelectedStoreId] = useState('')
-  const [selectedFacilityId, setSelectedFacilityId] = useState('')
+  const [selectedRoomId, setSelectedRoomId] = useState('')
   const [sending, setSending] = useState(false)
   const [response, setResponse] = useState(null)
   const [responseStatus, setResponseStatus] = useState(null)
@@ -110,24 +110,24 @@ export default function TestWebhook() {
       .then(({ data }) => setStores(data || []))
   }, [])
 
-  // Load facilities when store changes
+  // Load rooms when store changes
   useEffect(() => {
     if (!selectedStoreId) {
-      setFacilities([])
+      setRooms([])
       return
     }
     supabase
-      .from('facilities')
-      .select('id, name, location_room_id')
+      .from('rooms')
+      .select('id, name')
       .eq('store_id', selectedStoreId)
       .order('name')
-      .then(({ data }) => setFacilities(data || []))
+      .then(({ data }) => setRooms(data || []))
   }, [selectedStoreId])
 
   // When store selection changes, update order fields
   function handleStoreSelect(storeDbId) {
     setSelectedStoreId(storeDbId)
-    setSelectedFacilityId('')
+    setSelectedRoomId('')
     const store = stores.find(s => s.id === storeDbId)
     if (store) {
       setOrder(prev => ({
@@ -137,15 +137,15 @@ export default function TestWebhook() {
     }
   }
 
-  // When facility selection changes, update location
-  function handleFacilitySelect(facilityDbId) {
-    setSelectedFacilityId(facilityDbId)
-    const fac = facilities.find(f => f.id === facilityDbId)
-    if (fac) {
+  // When room selection changes, update locationExternalId with the room's internal ID
+  function handleRoomSelect(roomDbId) {
+    setSelectedRoomId(roomDbId)
+    const room = rooms.find(f => f.id === roomDbId)
+    if (room) {
       setOrder(prev => ({
         ...prev,
-        location: fac.location_room_id || '',
-        locationDescription: fac.name,
+        locationExternalId: room.id,
+        locationDescription: room.name,
       }))
     }
   }
@@ -190,14 +190,21 @@ export default function TestWebhook() {
     setResponse(null)
     setResponseStatus(null)
 
+    // Generate a fresh UUID for each send to avoid upsert collisions
+    const freshUuid = crypto.randomUUID()
+
     const payload = {
       ...order,
+      uuid: freshUuid,
       orderItems: orderItems.map(item => ({
         ...item,
         totalNonDiscountedPrice: item.offerPrice * item.quantity,
         totalDiscountedPrice: (item.discountedOfferPrice || item.offerPrice) * item.quantity,
       })),
     }
+
+    // Update the displayed UUID
+    setOrder(prev => ({ ...prev, uuid: freshUuid }))
 
     try {
       const res = await fetch('/api/validate-breakfast', {
@@ -247,12 +254,12 @@ export default function TestWebhook() {
                 </select>
               </label>
               <label className="field">
-                <span className="field-label">Facility</span>
-                <select value={selectedFacilityId} onChange={e => handleFacilitySelect(e.target.value)} disabled={!selectedStoreId}>
-                  <option value="">— Select facility —</option>
-                  {facilities.map(f => (
+                <span className="field-label">Room</span>
+                <select value={selectedRoomId} onChange={e => handleRoomSelect(e.target.value)} disabled={!selectedStoreId}>
+                  <option value="">— Select room —</option>
+                  {rooms.map(f => (
                     <option key={f.id} value={f.id}>
-                      {f.name} {f.location_room_id ? `(${f.location_room_id})` : '(no location ID)'}
+                      {f.name}
                     </option>
                   ))}
                 </select>
@@ -271,8 +278,8 @@ export default function TestWebhook() {
                 <input value={order.storeId} onChange={e => updateOrder('storeId', e.target.value)} />
               </label>
               <label className="field">
-                <span className="field-label">location</span>
-                <input value={order.location} onChange={e => updateOrder('location', e.target.value)} />
+                <span className="field-label">locationExternalId</span>
+                <input value={order.locationExternalId} onChange={e => updateOrder('locationExternalId', e.target.value)} />
               </label>
               <label className="field">
                 <span className="field-label">uuid</span>
@@ -511,7 +518,6 @@ export default function TestWebhook() {
 
             {response ? (
               <>
-                {/* Validation result banner */}
                 {response.valid !== undefined && (
                   <div style={{
                     padding: '0.75rem 1rem',
@@ -535,7 +541,6 @@ export default function TestWebhook() {
                   </div>
                 )}
 
-                {/* Stats */}
                 {response.entitled !== undefined && response.entitled !== null && (
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem', marginBottom: '0.75rem' }}>
                     <div style={{ textAlign: 'center', padding: '0.5rem', background: 'var(--bg-secondary)', borderRadius: '6px' }}>
@@ -553,7 +558,6 @@ export default function TestWebhook() {
                   </div>
                 )}
 
-                {/* Raw JSON */}
                 <pre style={{
                   background: 'var(--bg-secondary)',
                   padding: '0.75rem',

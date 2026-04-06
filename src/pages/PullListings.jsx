@@ -1,37 +1,31 @@
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../supabase'
 
-export default function PullFacilities() {
-  const [stores, setStores]         = useState([])
-  const [facilities, setFacilities] = useState([])   // all DB facilities
-  const [loading, setLoading]       = useState(true)
+export default function PullListings() {
+  const [stores, setStores]   = useState([])
+  const [rooms, setRooms]     = useState([])
+  const [loading, setLoading] = useState(true)
 
-  // Per-store: { [store_id]: { fetching, error, listings: [...] } }
   const [storeState, setStoreState] = useState({})
-
-  // Per-listing action loading: { [store_id+external_id]: true }
   const [actionLoading, setActionLoading] = useState({})
 
-  // Load stores + existing facilities once
   const loadData = useCallback(async () => {
     setLoading(true)
-    const [storesRes, facilitiesRes] = await Promise.all([
+    const [storesRes, roomsRes] = await Promise.all([
       supabase.from('stores').select('id, name, accommodation_company, api_key_name, api_key_secret, platform').order('name'),
-      supabase.from('facilities').select('id, name, external_id, platform, store_id, max_capacity, facility_type'),
+      supabase.from('rooms').select('id, name, platform_id, platform, store_id, max_capacity, room_type'),
     ])
     setStores(storesRes.data || [])
-    setFacilities(facilitiesRes.data || [])
+    setRooms(roomsRes.data || [])
     setLoading(false)
   }, [])
 
   useEffect(() => { loadData() }, [loadData])
 
-  // Build a lookup: external_id → facility (for quick matching)
-  const facilityByExternalId = Object.fromEntries(
-    facilities.map(f => [f.external_id, f])
+  const roomByPlatformId = Object.fromEntries(
+    rooms.map(f => [f.platform_id, f])
   )
 
-  // ── Fetch listings for a store ────────────────────────────────────────────
   async function fetchListings(store) {
     setStoreState(s => ({ ...s, [store.id]: { fetching: true, error: null, listings: null } }))
     try {
@@ -44,62 +38,56 @@ export default function PullFacilities() {
     }
   }
 
-  // ── Add listing as Facility ───────────────────────────────────────────────
-  async function addFacility(store, listing) {
-    const key = `${store.id}:${listing.external_id}`
+  async function addRoom(store, listing) {
+    const key = `${store.id}:${listing.platform_id}`
     setActionLoading(a => ({ ...a, [key]: true }))
-    // WebHotelier listings are hotel room types; HostHub are typically Airbnb rentals
     const isWebHotelier = listing.platform === 'webhotelier'
-    const { error } = await supabase.from('facilities').insert({
-      name:          listing.name,
-      facility_type: isWebHotelier ? 'hotel' : 'airbnb',
-      external_id:   listing.external_id,
-      platform:      listing.platform,
-      store_id:      store.id,
-      max_capacity:  listing.capacity ?? null,
+    const { error } = await supabase.from('rooms').insert({
+      name:         listing.name,
+      room_type:    isWebHotelier ? 'hotel' : 'airbnb',
+      platform_id:  listing.platform_id,
+      platform:     listing.platform,
+      store_id:     store.id,
+      max_capacity: listing.capacity ?? null,
     })
     setActionLoading(a => ({ ...a, [key]: false }))
     if (error) {
-      alert(`Could not create facility: ${error.message}`)
+      alert(`Could not create room: ${error.message}`)
     } else {
-      // Refresh facilities list so the UI updates immediately
-      const { data } = await supabase.from('facilities').select('id, name, external_id, platform, store_id, max_capacity, facility_type')
-      setFacilities(data || [])
+      const { data } = await supabase.from('rooms').select('id, name, platform_id, platform, store_id, max_capacity, room_type')
+      setRooms(data || [])
     }
   }
 
-  // ── Update facility capacity from listing ─────────────────────────────────
-  async function updateFacility(facility, listing) {
-    const key = `update:${facility.id}`
+  async function updateRoom(room, listing) {
+    const key = `update:${room.id}`
     setActionLoading(a => ({ ...a, [key]: true }))
-    const { error } = await supabase.from('facilities').update({
+    const { error } = await supabase.from('rooms').update({
       name:         listing.name,
-      max_capacity: listing.capacity ?? facility.max_capacity,
+      max_capacity: listing.capacity ?? room.max_capacity,
       updated_at:   new Date().toISOString(),
-    }).eq('id', facility.id)
+    }).eq('id', room.id)
     setActionLoading(a => ({ ...a, [key]: false }))
     if (error) {
-      alert(`Could not update facility: ${error.message}`)
+      alert(`Could not update room: ${error.message}`)
     } else {
-      const { data } = await supabase.from('facilities').select('id, name, external_id, platform, store_id, max_capacity, facility_type')
-      setFacilities(data || [])
+      const { data } = await supabase.from('rooms').select('id, name, platform_id, platform, store_id, max_capacity, room_type')
+      setRooms(data || [])
     }
   }
 
-  // ── Delete facility + its bookings ────────────────────────────────────────
-  async function deleteFacility(facility) {
-    if (!confirm(`Delete facility "${facility.name}" and all its bookings? This cannot be undone.`)) return
-    const key = `delete:${facility.id}`
+  async function deleteRoom(room) {
+    if (!confirm(`Delete room "${room.name}" and all its bookings? This cannot be undone.`)) return
+    const key = `delete:${room.id}`
     setActionLoading(a => ({ ...a, [key]: true }))
-    // Delete bookings first (no CASCADE on FK), then the facility
-    await supabase.from('bookings').delete().eq('facility_id', facility.id)
-    const { error } = await supabase.from('facilities').delete().eq('id', facility.id)
+    await supabase.from('bookings').delete().eq('room_id', room.id)
+    const { error } = await supabase.from('rooms').delete().eq('id', room.id)
     setActionLoading(a => ({ ...a, [key]: false }))
     if (error) {
-      alert(`Could not delete facility: ${error.message}`)
+      alert(`Could not delete room: ${error.message}`)
     } else {
-      const { data } = await supabase.from('facilities').select('id, name, external_id, platform, store_id, max_capacity, facility_type')
-      setFacilities(data || [])
+      const { data } = await supabase.from('rooms').select('id, name, platform_id, platform, store_id, max_capacity, room_type')
+      setRooms(data || [])
     }
   }
 
@@ -117,7 +105,7 @@ export default function PullFacilities() {
         <div>
           <h1 className="page-title">Pull Listings</h1>
           <p className="page-subtitle">
-            Fetch rental listings from the booking platform and onboard them as Horizon facilities
+            Fetch rental listings from the booking platform and onboard them as Horizon rooms
           </p>
         </div>
       </div>
@@ -134,7 +122,6 @@ export default function PullFacilities() {
 
             return (
               <div key={store.id} className="pull-store-card">
-                {/* Store header */}
                 <div className="pull-store-header">
                   <div className="pull-store-identity">
                     <span className="pull-store-name">{store.name}</span>
@@ -159,14 +146,12 @@ export default function PullFacilities() {
                   </div>
                 </div>
 
-                {/* Error */}
                 {ss.error && (
                   <div className="pull-error">
                     <strong>Error:</strong> {ss.error}
                   </div>
                 )}
 
-                {/* Listings table */}
                 {ss.listings && (
                   ss.listings.length === 0 ? (
                     <p className="pull-empty">No listings found for this account.</p>
@@ -184,15 +169,15 @@ export default function PullFacilities() {
                         </thead>
                         <tbody>
                           {ss.listings.map(listing => {
-                            const existing = facilityByExternalId[listing.external_id]
-                            const addKey    = `${store.id}:${listing.external_id}`
+                            const existing = roomByPlatformId[listing.platform_id]
+                            const addKey    = `${store.id}:${listing.platform_id}`
                             const updateKey = `update:${existing?.id}`
                             const deleteKey = `delete:${existing?.id}`
 
                             return (
-                              <tr key={listing.external_id}>
+                              <tr key={listing.platform_id}>
                                 <td className="cell-primary">{listing.name}</td>
-                                <td><code className="code-chip">{listing.external_id}</code></td>
+                                <td><code className="code-chip">{listing.platform_id}</code></td>
                                 <td>
                                   {listing.capacity != null
                                     ? <span>{listing.capacity} guests</span>
@@ -208,7 +193,7 @@ export default function PullFacilities() {
                                     <>
                                       <button
                                         className="btn btn-ghost btn-sm"
-                                        onClick={() => updateFacility(existing, listing)}
+                                        onClick={() => updateRoom(existing, listing)}
                                         disabled={!!actionLoading[updateKey]}
                                         title="Sync name and capacity from platform"
                                       >
@@ -216,7 +201,7 @@ export default function PullFacilities() {
                                       </button>
                                       <button
                                         className="btn btn-danger btn-sm"
-                                        onClick={() => deleteFacility(existing)}
+                                        onClick={() => deleteRoom(existing)}
                                         disabled={!!actionLoading[deleteKey]}
                                       >
                                         {actionLoading[deleteKey] ? '…' : 'Delete'}
@@ -225,7 +210,7 @@ export default function PullFacilities() {
                                   ) : (
                                     <button
                                       className="btn btn-success btn-sm"
-                                      onClick={() => addFacility(store, listing)}
+                                      onClick={() => addRoom(store, listing)}
                                       disabled={!!actionLoading[addKey]}
                                     >
                                       {actionLoading[addKey]

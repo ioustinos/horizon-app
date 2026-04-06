@@ -26,11 +26,11 @@ export default function AdminLayout() {
             </svg>
             Stores
           </NavLink>
-          <NavLink to="/admin/facilities" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
+          <NavLink to="/admin/rooms" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
             <svg viewBox="0 0 20 20" fill="currentColor" width="17" height="17">
               <path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7a1 1 0 001.414 1.414L4 10.414V17a1 1 0 001 1h2a1 1 0 001-1v-2a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 001 1h2a1 1 0 001-1v-6.586l.293.293a1 1 0 001.414-1.414l-7-7z" />
             </svg>
-            Facilities
+            Rooms
           </NavLink>
 
           <p className="nav-section-label" style={{ marginTop: '1rem' }}>Data</p>
