@@ -15,7 +15,7 @@ export default function Stores() {
     setLoading(true)
     const { data, error } = await supabase
       .from('stores')
-      .select('*, facilities(id, name)')
+      .select('*, rooms(id, name)')
       .order('created_at', { ascending: false })
     if (!error) setStores(data || [])
     setLoading(false)
@@ -100,7 +100,7 @@ export default function Stores() {
                 </th>
                 <th>Platform</th>
                 <th>API Key</th>
-                <th>Facilities</th>
+                <th>Rooms</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -121,8 +121,8 @@ export default function Stores() {
                       : <span className="muted">Not set</span>}
                   </td>
                   <td>
-                    {store.facilities?.length > 0
-                      ? <span className="badge">{store.facilities.length} linked</span>
+                    {store.rooms?.length > 0
+                      ? <span className="badge">{store.rooms.length} linked</span>
                       : <span className="muted">None</span>}
                   </td>
                   <td className="cell-actions">

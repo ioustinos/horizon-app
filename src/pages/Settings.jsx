@@ -7,7 +7,7 @@ const SETTING_META = {
     unit: 'minutes',
     type: 'number',
     min: 5,
-    hint: 'How often each facility is synced with its booking platform. The scheduled job runs every 5 minutes and checks this value — facilities synced more recently than this interval are skipped.',
+    hint: 'How often each room is synced with its booking platform. The scheduled job runs every 5 minutes and checks this value — rooms synced more recently than this interval are skipped.',
   },
   sync_lookback_days: {
     label: 'Lookback Window',

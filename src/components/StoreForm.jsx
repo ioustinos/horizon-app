@@ -85,7 +85,7 @@ export default function StoreForm({ store, onClose, onSaved }) {
                 onChange={e => set('accommodation_company', e.target.value)}
                 placeholder="e.g. Sunrise Hospitality Group"
               />
-              <p className="field-hint">The hotel or accommodation company that owns the linked facilities.</p>
+              <p className="field-hint">The hotel or accommodation company that owns the linked rooms.</p>
             </div>
           </div>
 
@@ -119,7 +119,7 @@ export default function StoreForm({ store, onClose, onSaved }) {
           {/* ── Platform & API Credentials ── */}
           <h3 className="form-section-title">Platform & API Credentials</h3>
           <p className="form-section-hint">
-            The booking platform and account credentials for all facilities linked to this store.
+            The booking platform and account credentials for all rooms linked to this store.
           </p>
           <div className="form-grid">
             <div className="field-group">
@@ -137,7 +137,7 @@ export default function StoreForm({ store, onClose, onSaved }) {
                 {form.platform === 'webhotelier'
                   ? 'WebHotelier uses Basic Auth (username + password).'
                   : form.platform === 'other'
-                  ? 'Facilities will be managed manually — no API sync.'
+                  ? 'Rooms will be managed manually — no API sync.'
                   : 'HostHub uses an API key for authentication.'}
               </p>
             </div>
