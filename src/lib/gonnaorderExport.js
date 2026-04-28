@@ -41,13 +41,26 @@ export const GO_EXT_ID_KEY     = 'External Id'
 
 // ─── Flow 1: build a fresh Table_Import.xlsx from Horizon rooms ─────────────
 
+// GonnaOrder requires Table Name to be numeric or alphanumeric (no spaces,
+// dots, or other punctuation). Our human room names ('1. A1', 'ΙΕ. Studio 5')
+// fail that check, so we use platform_id as the Table Name (it's already a
+// clean alphanumeric token like 'x9c415f73d'), and put the human name in
+// Description so operators can still recognise the room.
+function sanitizeTableName(s) {
+  // Fallback used only when a room has no platform_id (e.g. 'Other' rooms).
+  return String(s || 'room')
+    .replace(/[^A-Za-z0-9-]+/g, '-')   // collapse any non-alphanumeric to dashes
+    .replace(/^-+|-+$/g, '')           // trim leading/trailing dashes
+    .slice(0, 50) || 'room'
+}
+
 function rowForHorizonRoom(room) {
-  const comment = room.platform_id
-    ? `Horizon ${room.platform || 'room'} · platform_id: ${room.platform_id}`
-    : 'Horizon room'
+  const tableName = room.platform_id || sanitizeTableName(room.name)
+  const description = room.name || ''  // human-readable room name lives here
+  const comment = `Horizon ${room.platform || 'room'} · uuid: ${room.id}`
   return {
-    [GO_TABLE_NAME_KEY]:               room.name || '',
-    'Description':                     room.secondary_name || '',
+    [GO_TABLE_NAME_KEY]:               tableName,
+    'Description':                     description,
     'Comment':                         comment,
     'Location Types *':                'LOCATION',
     'Reservation maximum capacity':    room.max_capacity ?? '',

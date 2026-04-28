@@ -209,13 +209,25 @@ async function syncWebHotelier(room, { lookbackDays, forwardDays }) {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 async function upsertBookings(room, provider, rawBookings, transform, syncFrom) {
-  const rows = rawBookings.map((b) => ({
+  let rows = rawBookings.map((b) => ({
     room_id:        room.id,
     provider,
     go_location_id: room.id,  // store our room ID for reference
     last_synced_at: new Date().toISOString(),
     ...transform(b),
   }));
+
+  // Hard 30-day floor: bookings whose check-in is more than 30 days before
+  // today are not retained. Defense-in-depth on top of lookbackDays — keeps
+  // the bookings table to a meaningful working window regardless of what
+  // the upstream APIs return.
+  const cutoff30 = (() => {
+    const d = new Date(); d.setDate(d.getDate() - 30);
+    return d.toISOString().slice(0, 10);
+  })();
+  const beforeFloor = rows.length;
+  rows = rows.filter(r => r.check_in && r.check_in >= cutoff30);
+  const skippedOld = beforeFloor - rows.length;
 
   const { data: existing } = await supabase
     .from('bookings')
@@ -232,6 +244,7 @@ async function upsertBookings(room, provider, rawBookings, transform, syncFrom) 
   const fetchedIds = new Set(rows.map(r => r.external_id));
 
   const inserted = rows.filter(r => !existingMap.has(r.external_id)).length;
+  // skippedOld is informational — included in returned stats below.
   const updated  = rows.filter(r =>
     existingMap.has(r.external_id) && hasChanged(r, existingMap.get(r.external_id))
   ).length;
@@ -261,7 +274,7 @@ async function upsertBookings(room, provider, rawBookings, transform, syncFrom) 
     if (!error) deleted = staleIds.length;
   }
 
-  return { fetched: rawBookings.length, inserted, updated, deleted };
+  return { fetched: rawBookings.length, inserted, updated, deleted, skipped_old: skippedOld };
 }
 
 async function markRoomSynced(roomId) {

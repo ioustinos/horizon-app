@@ -16,7 +16,10 @@ export default function Bookings() {
   const [filterStatus,    setFilterStatus]    = useState('')
   const [filterBreakfast, setFilterBreakfast] = useState('')
   const [filterProvider,  setFilterProvider]  = useState('')
-  const [dateFrom, setDateFrom] = useState('')
+  // Default to bookings whose check-in is within the last 7 days or upcoming.
+  const [dateFrom, setDateFrom] = useState(() => {
+    const d = new Date(); d.setDate(d.getDate() - 7); return d.toISOString().slice(0, 10)
+  })
   const [dateTo,   setDateTo]   = useState('')
   const [sortKey,  setSortKey]  = useState('check_in')
   const [sortDir,  setSortDir]  = useState('asc')
