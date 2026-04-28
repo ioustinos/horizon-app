@@ -574,10 +574,12 @@ function MappingSection({ store, horizonRooms, state, onUpload, onSetMapping, on
                         >
                           <option value="">— not mapped —</option>
                           {horizonRooms.map(hr => {
-                            const taken = usedHorizonIds.has(hr.id) && hr.id !== mappedId
+                            const extId = hr.platform_id || hr.id
+                            const taken = usedHorizonIds.has(extId) && extId !== mappedId
                             return (
-                              <option key={hr.id} value={hr.id} disabled={taken}>
+                              <option key={hr.id} value={extId} disabled={taken}>
                                 {hr.name}{hr.secondary_name ? ` — ${hr.secondary_name}` : ''}
+                                {' · '}<code>{extId}</code>
                                 {taken ? ' (already mapped)' : ''}
                               </option>
                             )

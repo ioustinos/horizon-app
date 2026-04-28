@@ -54,7 +54,7 @@ function rowForHorizonRoom(room) {
     'Reservation minimum capacity':    '',
     'Reservation priority':            '',
     'Allow customers reservations':    'No',
-    [GO_EXT_ID_KEY]:                   room.id,
+    [GO_EXT_ID_KEY]:                   room.platform_id || room.id,
     'Address Line 1': '', 'Address Line 2': '', 'Post Code': '', 'Region': '',
     'City': '', 'GPS coordinates': '', 'Email': '', 'Phone Number': '',
   }
@@ -114,7 +114,10 @@ export function autoMatch(goRows, horizonRooms) {
     if (!goName) { matches[i] = null; continue }
     const candidates = byName.get(normalizeName(goName)) || []
     if (candidates.length === 1) {
-      matches[i] = candidates[0].id
+      // Store the value that should land in the External Id column —
+      // platform_id when present, else the Horizon UUID.
+      const c = candidates[0]
+      matches[i] = c.platform_id || c.id
     } else {
       matches[i] = null
       if (candidates.length > 1) ambiguous.push(i)

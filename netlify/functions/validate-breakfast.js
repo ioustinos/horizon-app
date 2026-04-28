@@ -104,21 +104,34 @@ export const handler = async (event) => {
     return error(404, `Store not found for storeId: ${goStoreId}`);
   }
 
-  // ── Find the room by internal ID ──────────────────────────────────────────
+  // ── Find the room by external mapping id ──────────────────────────────────
+  // GonnaOrder's location.externalId may be either:
+  //   - the platform_id (e.g. HostHub rental id) — preferred, stable across
+  //     Horizon data wipes and re-onboarding
+  //   - the Horizon rooms.id (UUID) — fallback for 'Other (max-pax)' rooms
+  //     that have no platform integration.
+  // We can't .or() across both because Postgres rejects non-UUID strings
+  // when matched against a uuid column; instead we route by format.
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const lookupCol = UUID_RE.test(goRoomId) ? 'id' : 'platform_id';
   const { data: room, error: roomErr } = await supabase
     .from('rooms')
-    .select('id, name, platform, max_capacity')
+    .select('id, name, platform, max_capacity, platform_id')
     .eq('store_id', store.id)
-    .eq('id', goRoomId)
-    .single();
+    .eq(lookupCol, goRoomId)
+    .maybeSingle();
 
-  if (roomErr || !room) {
+  if (roomErr) {
+    console.error('Room lookup error:', roomErr);
+    return error(500, 'Room lookup failed');
+  }
+  if (!room) {
     return ok({
       valid: false,
       reason: 'no_room_match',
       entitled: 0,
       requested: breakfastQty,
-      message: `No room found with ID "${goRoomId}" under store "${store.name}".`,
+      message: `No room found with ${lookupCol}="${goRoomId}" under store "${store.name}".`,
     });
   }
 
