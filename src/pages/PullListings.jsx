@@ -1,6 +1,15 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { supabase } from '../supabase'
-import { downloadGonnaOrderXlsx, safeFilenameSegment } from '../lib/gonnaorderExport'
+import {
+  parseGonnaOrderXlsx,
+  autoMatch,
+  buildMappedGonnaOrderXlsx,
+  buildFreshGonnaOrderXlsxBuffer,
+  downloadXlsxBuffer,
+  safeFilenameSegment,
+  GO_TABLE_NAME_KEY,
+  GO_EXT_ID_KEY,
+} from '../lib/gonnaorderExport'
 
 export default function PullListings() {
   const [stores, setStores]   = useState([])
@@ -9,12 +18,13 @@ export default function PullListings() {
 
   const [storeState, setStoreState] = useState({})
   const [actionLoading, setActionLoading] = useState({})
+  const [mapState, setMapState] = useState({}) // per-store mapping state
 
   const loadData = useCallback(async () => {
     setLoading(true)
     const [storesRes, roomsRes] = await Promise.all([
       supabase.from('stores').select('id, name, accommodation_company, api_key_name, api_key_secret, platform').order('name'),
-      supabase.from('rooms').select('id, name, platform_id, platform, store_id, max_capacity, room_type'),
+      supabase.from('rooms').select('id, name, secondary_name, platform_id, platform, store_id, max_capacity, room_type'),
     ])
     setStores(storesRes.data || [])
     setRooms(roomsRes.data || [])
@@ -26,6 +36,17 @@ export default function PullListings() {
   const roomByPlatformId = Object.fromEntries(
     rooms.map(f => [f.platform_id, f])
   )
+
+  const roomsByStore = useMemo(() => {
+    const m = {}
+    for (const r of rooms) {
+      if (!m[r.store_id]) m[r.store_id] = []
+      m[r.store_id].push(r)
+    }
+    return m
+  }, [rooms])
+
+  // ── Listings actions ─────────────────────────────────────────────────────
 
   async function fetchListings(store) {
     setStoreState(s => ({ ...s, [store.id]: { fetching: true, error: null, listings: null } }))
@@ -55,8 +76,7 @@ export default function PullListings() {
     if (error) {
       alert(`Could not create room: ${error.message}`)
     } else {
-      const { data } = await supabase.from('rooms').select('id, name, platform_id, platform, store_id, max_capacity, room_type')
-      setRooms(data || [])
+      await reloadRooms()
     }
   }
 
@@ -72,8 +92,7 @@ export default function PullListings() {
     if (error) {
       alert(`Could not update room: ${error.message}`)
     } else {
-      const { data } = await supabase.from('rooms').select('id, name, platform_id, platform, store_id, max_capacity, room_type')
-      setRooms(data || [])
+      await reloadRooms()
     }
   }
 
@@ -87,30 +106,86 @@ export default function PullListings() {
     if (error) {
       alert(`Could not delete room: ${error.message}`)
     } else {
-      const { data } = await supabase.from('rooms').select('id, name, platform_id, platform, store_id, max_capacity, room_type')
-      setRooms(data || [])
+      await reloadRooms()
     }
   }
 
-  async function exportToGonnaOrder(store) {
-    // Fetch the latest rooms for this store with all the fields we need
-    // (re-query so we get any rooms added since the page loaded).
-    const { data, error } = await supabase
-      .from('rooms')
-      .select('id, name, secondary_name, platform_id, platform, max_capacity, store_id')
-      .eq('store_id', store.id)
-      .order('name')
-    if (error) {
-      alert(`Could not load rooms: ${error.message}`)
-      return
+  async function reloadRooms() {
+    const { data } = await supabase.from('rooms').select('id, name, secondary_name, platform_id, platform, store_id, max_capacity, room_type')
+    setRooms(data || [])
+  }
+
+  // ── GonnaOrder mapping flow ──────────────────────────────────────────────
+
+  function toggleMapping(storeId) {
+    setMapState(s => ({
+      ...s,
+      [storeId]: { ...(s[storeId] || {}), open: !(s[storeId]?.open) }
+    }))
+  }
+
+  async function handleMapFile(store, file) {
+    if (!file) return
+    setMapState(s => ({ ...s, [store.id]: { ...(s[store.id] || {}), open: true, parsing: true, fileError: null } }))
+    try {
+      const buf = await file.arrayBuffer()
+      const { rows, headers } = parseGonnaOrderXlsx(buf)
+      if (!rows.length) throw new Error('No rows found in the uploaded xlsx.')
+      const horizonRooms = roomsByStore[store.id] || []
+      const { matches } = autoMatch(rows, horizonRooms)
+      const autoCount = Object.values(matches).filter(Boolean).length
+      setMapState(s => ({
+        ...s,
+        [store.id]: {
+          open: true,
+          parsing: false,
+          fileName: file.name,
+          rows,
+          headers,
+          mappings: matches,
+          autoCount,
+          totalRows: rows.length,
+          fileError: null,
+        }
+      }))
+    } catch (err) {
+      setMapState(s => ({
+        ...s,
+        [store.id]: { ...(s[store.id] || {}), open: true, parsing: false, fileError: err.message }
+      }))
     }
-    if (!data || !data.length) {
+  }
+
+  function setManualMapping(storeId, rowIdx, horizonRoomId) {
+    setMapState(s => {
+      const cur = s[storeId] || {}
+      const newMappings = { ...(cur.mappings || {}), [rowIdx]: horizonRoomId || null }
+      const autoCount = Object.values(newMappings).filter(Boolean).length
+      return { ...s, [storeId]: { ...cur, mappings: newMappings, autoCount } }
+    })
+  }
+
+  function clearMapping(storeId) {
+    setMapState(s => ({ ...s, [storeId]: { open: true } }))
+  }
+
+  function downloadMappedFile(store) {
+    const ms = mapState[store.id]
+    if (!ms?.rows) return
+    const buf = buildMappedGonnaOrderXlsx(ms.rows, ms.headers, ms.mappings || {}, { onlyMapped: true })
+    const stamp = new Date().toISOString().slice(0, 10)
+    downloadXlsxBuffer(buf, `${safeFilenameSegment(store.name)}_gonnaorder_external_ids_${stamp}.xlsx`)
+  }
+
+  function downloadFreshFile(store) {
+    const list = roomsByStore[store.id] || []
+    if (!list.length) {
       alert('No Horizon rooms exist for this store yet. Fetch listings and onboard them first.')
       return
     }
+    const buf = buildFreshGonnaOrderXlsxBuffer(list)
     const stamp = new Date().toISOString().slice(0, 10)
-    const fileName = `${safeFilenameSegment(store.name)}_gonnaorder_locations_${stamp}.xlsx`
-    downloadGonnaOrderXlsx(data, fileName)
+    downloadXlsxBuffer(buf, `${safeFilenameSegment(store.name)}_gonnaorder_create_${stamp}.xlsx`)
   }
 
   if (loading) {
@@ -140,7 +215,9 @@ export default function PullListings() {
         <div className="pull-store-list">
           {stores.map(store => {
             const ss = storeState[store.id] || {}
+            const ms = mapState[store.id] || {}
             const hasCredentials = !!store.api_key_secret
+            const storeRoomCount = (roomsByStore[store.id] || []).length
 
             return (
               <div key={store.id} className="pull-store-card">
@@ -165,21 +242,16 @@ export default function PullListings() {
                     >
                       {ss.fetching ? <><span className="btn-spinner" /> Fetching…</> : 'Fetch Listings'}
                     </button>
-                    {(() => {
-                      const storeRoomCount = rooms.filter(r => r.store_id === store.id).length
-                      return (
-                        <button
-                          className="btn btn-secondary btn-sm"
-                          onClick={() => exportToGonnaOrder(store)}
-                          disabled={storeRoomCount === 0}
-                          title={storeRoomCount === 0
-                            ? 'No Horizon rooms onboarded yet for this store'
-                            : `Download ${storeRoomCount} room${storeRoomCount === 1 ? '' : 's'} as a GonnaOrder Table_Import.xlsx`}
-                        >
-                          Export to GonnaOrder XLSX{storeRoomCount > 0 ? ` (${storeRoomCount})` : ''}
-                        </button>
-                      )
-                    })()}
+                    <button
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => toggleMapping(store.id)}
+                      disabled={storeRoomCount === 0}
+                      title={storeRoomCount === 0
+                        ? 'No Horizon rooms onboarded yet — fetch listings first'
+                        : 'Map Horizon rooms onto your existing GonnaOrder rooms'}
+                    >
+                      {ms.open ? 'Hide GonnaOrder mapping' : `Map to GonnaOrder${storeRoomCount > 0 ? ` (${storeRoomCount})` : ''}`}
+                    </button>
                   </div>
                 </div>
 
@@ -264,10 +336,162 @@ export default function PullListings() {
                     </div>
                   )
                 )}
+
+                {ms.open && (
+                  <MappingSection
+                    store={store}
+                    horizonRooms={roomsByStore[store.id] || []}
+                    state={ms}
+                    onUpload={file => handleMapFile(store, file)}
+                    onSetMapping={(rowIdx, hid) => setManualMapping(store.id, rowIdx, hid)}
+                    onClear={() => clearMapping(store.id)}
+                    onDownload={() => downloadMappedFile(store)}
+                    onDownloadFresh={() => downloadFreshFile(store)}
+                  />
+                )}
               </div>
             )
           })}
         </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Mapping section component ─────────────────────────────────────────────
+
+function MappingSection({ store, horizonRooms, state, onUpload, onSetMapping, onClear, onDownload, onDownloadFresh }) {
+  const { rows, headers, mappings, fileError, parsing, fileName, totalRows, autoCount } = state
+  const hasRows = !!(rows && rows.length)
+  const mappedCount = mappings ? Object.values(mappings).filter(Boolean).length : 0
+  const usedHorizonIds = new Set(Object.values(mappings || {}).filter(Boolean))
+
+  return (
+    <div style={{
+      marginTop: '0.75rem',
+      padding: '0.875rem 1rem',
+      border: '1px solid #d6dde8',
+      borderRadius: 8,
+      background: '#f7f9fc',
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8 }}>
+        <div>
+          <strong>GonnaOrder Mapping</strong>
+          <p style={{ margin: '4px 0 0', fontSize: 13, color: '#566' }}>
+            Upload your current GonnaOrder Table_Import export. We&rsquo;ll match rows by name to Horizon
+            rooms in <em>{store.name}</em>; you can adjust any unmatched rows manually. The download fills
+            in <code>External Id</code> on the rows you&rsquo;ve mapped — unmapped rows are skipped, so
+            no new GonnaOrder rooms are created.
+          </p>
+        </div>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button className="btn btn-ghost btn-sm" onClick={onDownloadFresh}
+                  title="Generate a fresh Table_Import.xlsx that CREATES rooms in GonnaOrder. Use only on empty test stores.">
+            Create-mode XLSX (test only)
+          </button>
+        </div>
+      </div>
+
+      <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <label className="btn btn-secondary btn-sm" style={{ cursor: 'pointer', margin: 0 }}>
+          {parsing ? 'Parsing…' : (hasRows ? 'Replace file' : 'Upload current GonnaOrder export')}
+          <input
+            type="file"
+            accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            style={{ display: 'none' }}
+            onChange={e => onUpload(e.target.files?.[0])}
+          />
+        </label>
+        {fileName && <span style={{ fontSize: 13, color: '#445' }}>📄 <code>{fileName}</code></span>}
+        {hasRows && (
+          <span style={{ fontSize: 13 }}>
+            <span style={{ color: '#0a7d3e' }}>✓ {mappedCount}</span> mapped
+            <span style={{ color: '#777' }}> · {totalRows - mappedCount} unmapped</span>
+            <span style={{ color: '#777' }}> · auto-matched on upload: {autoCount ?? 0}</span>
+          </span>
+        )}
+        {hasRows && (
+          <button className="btn btn-ghost btn-sm" onClick={onClear} title="Clear the uploaded file">
+            Reset
+          </button>
+        )}
+      </div>
+
+      {fileError && (
+        <div className="pull-error" style={{ marginTop: 8 }}>
+          <strong>Error parsing file:</strong> {fileError}
+        </div>
+      )}
+
+      {hasRows && (
+        <>
+          <div className="table-wrapper" style={{ marginTop: 12 }}>
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>GonnaOrder Table Name</th>
+                  <th>Current External Id</th>
+                  <th>Mapped Horizon room</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row, i) => {
+                  const goName = row[GO_TABLE_NAME_KEY] || ''
+                  const currentExt = row[GO_EXT_ID_KEY] || ''
+                  const mappedId = mappings?.[i] || ''
+                  const matched = !!mappedId
+                  return (
+                    <tr key={i} style={{ background: matched ? '#f0f9f3' : undefined }}>
+                      <td className="cell-primary">{goName || <span className="muted">(empty name)</span>}</td>
+                      <td>
+                        {currentExt
+                          ? <code className="code-chip">{currentExt}</code>
+                          : <span className="muted">—</span>}
+                      </td>
+                      <td>
+                        <select
+                          value={mappedId}
+                          onChange={e => onSetMapping(i, e.target.value)}
+                          style={{ padding: '4px 6px', fontSize: 13, minWidth: 240 }}
+                        >
+                          <option value="">— not mapped —</option>
+                          {horizonRooms.map(hr => {
+                            const taken = usedHorizonIds.has(hr.id) && hr.id !== mappedId
+                            return (
+                              <option key={hr.id} value={hr.id} disabled={taken}>
+                                {hr.name}{hr.secondary_name ? ` — ${hr.secondary_name}` : ''}
+                                {taken ? ' (already mapped)' : ''}
+                              </option>
+                            )
+                          })}
+                        </select>
+                      </td>
+                      <td>
+                        {matched
+                          ? <span className="badge badge-success">Will fill External Id</span>
+                          : <span className="badge badge-neutral">Skipped</span>}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          <div style={{ marginTop: 10, display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
+            <button
+              className="btn btn-primary btn-sm"
+              onClick={onDownload}
+              disabled={mappedCount === 0}
+              title={mappedCount === 0
+                ? 'Map at least one row before downloading'
+                : `Download an upsert-safe xlsx for ${mappedCount} row${mappedCount === 1 ? '' : 's'} — only fills External Id, never creates`}
+            >
+              Download mapped XLSX ({mappedCount})
+            </button>
+          </div>
+        </>
       )}
     </div>
   )
