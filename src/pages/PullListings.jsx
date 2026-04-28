@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../supabase'
+import { downloadGonnaOrderXlsx, safeFilenameSegment } from '../lib/gonnaorderExport'
 
 export default function PullListings() {
   const [stores, setStores]   = useState([])
@@ -91,6 +92,27 @@ export default function PullListings() {
     }
   }
 
+  async function exportToGonnaOrder(store) {
+    // Fetch the latest rooms for this store with all the fields we need
+    // (re-query so we get any rooms added since the page loaded).
+    const { data, error } = await supabase
+      .from('rooms')
+      .select('id, name, secondary_name, platform_id, platform, max_capacity, store_id')
+      .eq('store_id', store.id)
+      .order('name')
+    if (error) {
+      alert(`Could not load rooms: ${error.message}`)
+      return
+    }
+    if (!data || !data.length) {
+      alert('No Horizon rooms exist for this store yet. Fetch listings and onboard them first.')
+      return
+    }
+    const stamp = new Date().toISOString().slice(0, 10)
+    const fileName = `${safeFilenameSegment(store.name)}_gonnaorder_locations_${stamp}.xlsx`
+    downloadGonnaOrderXlsx(data, fileName)
+  }
+
   if (loading) {
     return (
       <div className="page">
@@ -143,6 +165,21 @@ export default function PullListings() {
                     >
                       {ss.fetching ? <><span className="btn-spinner" /> Fetching…</> : 'Fetch Listings'}
                     </button>
+                    {(() => {
+                      const storeRoomCount = rooms.filter(r => r.store_id === store.id).length
+                      return (
+                        <button
+                          className="btn btn-secondary btn-sm"
+                          onClick={() => exportToGonnaOrder(store)}
+                          disabled={storeRoomCount === 0}
+                          title={storeRoomCount === 0
+                            ? 'No Horizon rooms onboarded yet for this store'
+                            : `Download ${storeRoomCount} room${storeRoomCount === 1 ? '' : 's'} as a GonnaOrder Table_Import.xlsx`}
+                        >
+                          Export to GonnaOrder XLSX{storeRoomCount > 0 ? ` (${storeRoomCount})` : ''}
+                        </button>
+                      )
+                    })()}
                   </div>
                 </div>
 
