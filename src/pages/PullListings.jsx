@@ -19,6 +19,8 @@ export default function PullListings() {
   const [storeState, setStoreState] = useState({})
   const [actionLoading, setActionLoading] = useState({})
   const [mapState, setMapState] = useState({}) // per-store mapping state
+  const [selectedForCreate, setSelectedForCreate] = useState({}) // { [storeId]: Set<platform_id> }
+  const [bulkOnboarding, setBulkOnboarding] = useState({})       // { [storeId]: boolean }
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -177,15 +179,67 @@ export default function PullListings() {
     downloadXlsxBuffer(buf, `${safeFilenameSegment(store.name)}_gonnaorder_external_ids_${stamp}.xlsx`)
   }
 
-  function downloadFreshFile(store) {
-    const list = roomsByStore[store.id] || []
-    if (!list.length) {
-      alert('No Horizon rooms exist for this store yet. Fetch listings and onboard them first.')
-      return
+  function toggleListingSelected(storeId, platformId) {
+    setSelectedForCreate(s => {
+      const cur = new Set(s[storeId] || [])
+      if (cur.has(platformId)) cur.delete(platformId); else cur.add(platformId)
+      return { ...s, [storeId]: cur }
+    })
+  }
+
+  function setAllListingsSelected(storeId, listings, value) {
+    setSelectedForCreate(s => ({
+      ...s,
+      [storeId]: value ? new Set(listings.map(l => l.platform_id)) : new Set()
+    }))
+  }
+
+  // Bulk action: for any selected listings that aren't yet Horizon rooms,
+  // insert them; then generate a create-mode xlsx from the resulting rooms.
+  // One click = onboard + export, so the operator can pick the listings they
+  // want and immediately get an upsert-ready file for a test GonnaOrder store.
+  async function onboardAndDownloadCreateXlsx(store, listings) {
+    const sel = selectedForCreate[store.id]
+    if (!sel || sel.size === 0) return
+    setBulkOnboarding(b => ({ ...b, [store.id]: true }))
+    try {
+      // Listings the operator selected, in their original Fetch Listings order
+      const selectedListings = listings.filter(l => sel.has(l.platform_id))
+      // Determine which ones still need onboarding into Horizon
+      const toInsert = selectedListings
+        .filter(l => !roomByPlatformId[l.platform_id])
+        .map(l => ({
+          name:         l.name,
+          room_type:    l.platform === 'webhotelier' ? 'hotel' : 'airbnb',
+          platform_id:  l.platform_id,
+          platform:     l.platform,
+          store_id:     store.id,
+          max_capacity: l.capacity ?? null,
+        }))
+      if (toInsert.length) {
+        const { error } = await supabase.from('rooms').insert(toInsert)
+        if (error) {
+          alert(`Could not onboard listings: ${error.message}`)
+          return
+        }
+      }
+      // Reload rooms and pick the ones matching selected platform_ids
+      const { data: freshRooms } = await supabase
+        .from('rooms')
+        .select('id, name, secondary_name, platform_id, platform, store_id, max_capacity, room_type')
+      setRooms(freshRooms || [])
+      const picked = (freshRooms || [])
+        .filter(r => r.store_id === store.id && sel.has(r.platform_id))
+      if (!picked.length) {
+        alert('No matching Horizon rooms after onboarding — please retry.')
+        return
+      }
+      const buf = buildFreshGonnaOrderXlsxBuffer(picked)
+      const stamp = new Date().toISOString().slice(0, 10)
+      downloadXlsxBuffer(buf, `${safeFilenameSegment(store.name)}_gonnaorder_create_${stamp}.xlsx`)
+    } finally {
+      setBulkOnboarding(b => ({ ...b, [store.id]: false }))
     }
-    const buf = buildFreshGonnaOrderXlsxBuffer(list)
-    const stamp = new Date().toISOString().slice(0, 10)
-    downloadXlsxBuffer(buf, `${safeFilenameSegment(store.name)}_gonnaorder_create_${stamp}.xlsx`)
   }
 
   if (loading) {
@@ -265,10 +319,19 @@ export default function PullListings() {
                   ss.listings.length === 0 ? (
                     <p className="pull-empty">No listings found for this account.</p>
                   ) : (
+                    <>
                     <div className="table-wrapper" style={{ marginTop: '0.75rem' }}>
                       <table className="data-table">
                         <thead>
                           <tr>
+                            <th style={{ width: 36 }}>
+                              <input
+                                type="checkbox"
+                                checked={(selectedForCreate[store.id]?.size || 0) === ss.listings.length && ss.listings.length > 0}
+                                onChange={e => setAllListingsSelected(store.id, ss.listings, e.target.checked)}
+                                title="Select / deselect all listings for the create XLSX"
+                              />
+                            </th>
                             <th>Listing Name</th>
                             <th>Platform ID</th>
                             <th>Capacity</th>
@@ -283,8 +346,19 @@ export default function PullListings() {
                             const updateKey = `update:${existing?.id}`
                             const deleteKey = `delete:${existing?.id}`
 
+                            const isSelected = !!selectedForCreate[store.id]?.has(listing.platform_id)
                             return (
-                              <tr key={listing.platform_id}>
+                              <tr key={listing.platform_id} style={isSelected ? { background: '#f0f9f3' } : undefined}>
+                                <td>
+                                  <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    onChange={() => toggleListingSelected(store.id, listing.platform_id)}
+                                    title={existing
+                                      ? "Include this Horizon room in the create XLSX"
+                                      : "Will be onboarded as a Horizon room when you click 'Onboard & download'"}
+                                  />
+                                </td>
                                 <td className="cell-primary">{listing.name}</td>
                                 <td><code className="code-chip">{listing.platform_id}</code></td>
                                 <td>
@@ -334,6 +408,28 @@ export default function PullListings() {
                         </tbody>
                       </table>
                     </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8, gap: 8, flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: 13, color: '#566' }}>
+                        {(() => {
+                          const sel = selectedForCreate[store.id]
+                          const n = sel?.size || 0
+                          const newOnboards = ss.listings.filter(l => sel?.has(l.platform_id) && !roomByPlatformId[l.platform_id]).length
+                          if (n === 0) return 'Tick listings to include in a create-mode XLSX (test GonnaOrder stores).'
+                          return `${n} selected${newOnboards ? ` — ${newOnboards} will be onboarded as Horizon rooms` : ''}`
+                        })()}
+                      </span>
+                      <button
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => onboardAndDownloadCreateXlsx(store, ss.listings)}
+                        disabled={!selectedForCreate[store.id]?.size || bulkOnboarding[store.id]}
+                        title="Onboard any not-yet-Horizon selections, then download a create-mode XLSX (test GonnaOrder stores only — will create rooms!)"
+                      >
+                        {bulkOnboarding[store.id]
+                          ? 'Onboarding…'
+                          : `Onboard & download create XLSX${selectedForCreate[store.id]?.size ? ` (${selectedForCreate[store.id].size})` : ''}`}
+                      </button>
+                    </div>
+                    </>
                   )
                 )}
 
@@ -346,7 +442,6 @@ export default function PullListings() {
                     onSetMapping={(rowIdx, hid) => setManualMapping(store.id, rowIdx, hid)}
                     onClear={() => clearMapping(store.id)}
                     onDownload={() => downloadMappedFile(store)}
-                    onDownloadFresh={() => downloadFreshFile(store)}
                   />
                 )}
               </div>
@@ -360,7 +455,7 @@ export default function PullListings() {
 
 // ─── Mapping section component ─────────────────────────────────────────────
 
-function MappingSection({ store, horizonRooms, state, onUpload, onSetMapping, onClear, onDownload, onDownloadFresh }) {
+function MappingSection({ store, horizonRooms, state, onUpload, onSetMapping, onClear, onDownload }) {
   const { rows, headers, mappings, fileError, parsing, fileName, totalRows, autoCount } = state
   const hasRows = !!(rows && rows.length)
   const mappedCount = mappings ? Object.values(mappings).filter(Boolean).length : 0
@@ -383,12 +478,6 @@ function MappingSection({ store, horizonRooms, state, onUpload, onSetMapping, on
             in <code>External Id</code> on the rows you&rsquo;ve mapped — unmapped rows are skipped, so
             no new GonnaOrder rooms are created.
           </p>
-        </div>
-        <div style={{ display: 'flex', gap: 6 }}>
-          <button className="btn btn-ghost btn-sm" onClick={onDownloadFresh}
-                  title="Generate a fresh Table_Import.xlsx that CREATES rooms in GonnaOrder. Use only on empty test stores.">
-            Create-mode XLSX (test only)
-          </button>
         </div>
       </div>
 
