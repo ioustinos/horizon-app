@@ -28,7 +28,7 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_KEY
 );
 
-export const handler = async (event) => {
+const innerHandler = async (event) => {
   // ── CORS preflight ────────────────────────────────────────────────────────
   if (event.httpMethod === 'OPTIONS') {
     return {
@@ -315,3 +315,44 @@ function error(statusCode, message) {
     body: JSON.stringify({ error: message }),
   };
 }
+
+
+// Capture-everything wrapper. Logs every inbound request to webhook_logs
+// regardless of outcome (early returns, validation results, errors), so we
+// can debug in production without console.log spelunking on Netlify.
+export const handler = async (event) => {
+  const start = Date.now();
+  let result;
+  try {
+    result = await innerHandler(event);
+  } catch (err) {
+    result = {
+      statusCode: 500,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ error: err.message, stack: err.stack }),
+    };
+  }
+  const duration = Date.now() - start;
+
+  // Best-effort log; never let logging break the response to GonnaOrder.
+  try {
+    let parsedBody = null;
+    try { parsedBody = JSON.parse(event.body || 'null'); } catch { parsedBody = { _raw: event.body }; }
+    let parsedResp = null;
+    try { parsedResp = JSON.parse(result?.body || 'null'); } catch { parsedResp = { _raw: result?.body }; }
+    await supabase.from('webhook_logs').insert({
+      endpoint: '/api/validate-breakfast',
+      http_method: event.httpMethod,
+      request_headers: event.headers || null,
+      request_body: parsedBody,
+      response_status: result?.statusCode ?? 500,
+      response_body: parsedResp,
+      duration_ms: duration,
+      ip: event.headers?.['x-forwarded-for'] || event.headers?.['client-ip'] || null,
+    });
+  } catch (logErr) {
+    console.error('webhook_logs insert failed:', logErr);
+  }
+
+  return result;
+};
