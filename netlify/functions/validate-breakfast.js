@@ -2,16 +2,18 @@
 // Called by GonnaOrder to validate breakfast entitlement.
 //
 // POST /api/validate-breakfast
-// Body: full GonnaOrder order object (OrderResponse)
+// Body: full GonnaOrder order object (OrderResponse).
+// May arrive as a bare object or wrapped in an array (e.g. n8n test captures).
 //
 // Validation logic:
-//   1. Parse the GonnaOrder order payload
-//   2. Extract storeId, locationExternalId (our room ID), wishTime
-//   3. Identify breakfast items: orderItems where offer.stockLevel === 0
-//      AND offer.isStockCheckEnabled === true
+//   1. Parse the GonnaOrder order payload (unwrap array if needed)
+//   2. Extract storeId, room mapping ID (location.externalId), wishTime
+//   3. Identify breakfast items: top-level orderItems whose offer has a
+//      `countAgainstSlot` property (presence-based, per GonnaOrder convention).
+//      Modifiers are NOT counted.
 //   4. Sum their quantities → covers requested
 //   5. Find the Horizon store by gonnaorder_store_id
-//   6. Find the room by its internal ID (locationExternalId = rooms.id)
+//   6. Find the room by its internal ID (room mapping ID = rooms.id)
 //   7a. If room platform = "other" → entitled = max_capacity (no bookings needed)
 //   7b. Otherwise → find confirmed bookings with breakfast_included covering the wish date
 //   8. Double-order check: sum already-validated covers for that room+date,
@@ -40,30 +42,42 @@ export const handler = async (event) => {
     return error(405, 'Method not allowed');
   }
 
-  let order;
+  let parsed;
   try {
-    order = JSON.parse(event.body);
+    parsed = JSON.parse(event.body);
   } catch {
     return error(400, 'Invalid JSON body');
   }
 
+  // Some test captures (e.g. n8n) wrap the order in an array. Unwrap it.
+  const order = Array.isArray(parsed) ? parsed[0] : parsed;
+  if (!order || typeof order !== 'object') {
+    return error(400, 'Empty or malformed order payload');
+  }
+
   // ── Extract key fields from order ─────────────────────────────────────────
   const goStoreId   = String(order.storeId || '');
-  const goRoomId    = String(order.locationExternalId || '');
   const goOrderUuid = order.uuid || '';
   const wishTime    = order.wishTime;
 
+  // Room mapping ID lives at order.location.externalId in the standard
+  // GonnaOrder payload. Fall back to legacy/flat shapes just in case.
+  const goRoomId = extractRoomId(order);
+
   if (!goStoreId) return error(400, 'Missing storeId in order');
-  if (!goRoomId)  return error(400, 'Missing locationExternalId in order');
+  if (!goRoomId)  return error(400, 'Missing location.externalId in order');
   if (!wishTime)  return error(400, 'Missing wishTime in order');
 
   const wishDate = wishTime.split('T')[0];
 
   // ── Identify breakfast items ──────────────────────────────────────────────
+  // Convention: an offer that has the `countAgainstSlot` property is a
+  // breakfast item. The value itself isn't checked — only presence matters.
+  // Only TOP-LEVEL orderItems are considered; modifiers are ignored.
   const breakfastItems = (order.orderItems || []).filter(item => {
     const offer = item.offer;
-    if (!offer) return false;
-    return offer.stockLevel === 0 && offer.isStockCheckEnabled === true;
+    if (!offer || typeof offer !== 'object') return false;
+    return Object.prototype.hasOwnProperty.call(offer, 'countAgainstSlot');
   });
 
   const breakfastQty = breakfastItems.reduce(
@@ -215,7 +229,6 @@ export const handler = async (event) => {
     room_name: room.name,
   };
 
-  // Add booking details only for non-"other" rooms
   if (matchedBooking) {
     response.check_in = matchedBooking.check_in;
     response.check_out = matchedBooking.check_out;
@@ -226,6 +239,18 @@ export const handler = async (event) => {
 };
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
+
+// Extract the room mapping ID from the order payload.
+// Preferred: order.location.externalId (object form, current GonnaOrder schema).
+// Fallbacks (defensive): order.locationExternalId (flat), order.location (string).
+function extractRoomId(order) {
+  if (order.location && typeof order.location === 'object') {
+    if (order.location.externalId) return String(order.location.externalId);
+  }
+  if (order.locationExternalId) return String(order.locationExternalId);
+  if (typeof order.location === 'string' && order.location) return order.location;
+  return '';
+}
 
 async function saveOrder(goOrderUuid, storeId, roomId, bookingId, goLocationId, wishDate, coversRequested, status, reason, rawPayload) {
   if (!goOrderUuid) return;
