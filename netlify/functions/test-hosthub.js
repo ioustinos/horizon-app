@@ -1,6 +1,8 @@
 // test-hosthub.js
-// Temporary diagnostic function — fetches raw HostHub data to verify auth + endpoint shape.
-// GET /api/test-hosthub?api_key=YOUR_KEY&env=staging
+// Diagnostic — fires many auth header / endpoint / env combinations against HostHub
+// and reports status + a snippet of the response body so we can read the actual error.
+//
+// GET /api/test-hosthub?api_key=YOUR_KEY[&env=staging|production]
 
 export const handler = async (event) => {
   const apiKey = event.queryStringParameters?.api_key;
@@ -14,51 +16,40 @@ export const handler = async (event) => {
     ? 'https://app.hosthub.com/api/2019-03-01'
     : 'https://eric.hosthub.com/api/2019-03-01';
 
-  // HostHub uses ApiKeyAuth — try the most likely header formats
+  // Auth variations — header name + value template combinations.
   const authFormats = [
-    { label: 'apiKey prefix',  header: `apiKey ${apiKey}` },
-    { label: 'Bearer prefix',  header: `Bearer ${apiKey}` },
-    { label: 'plain token',    header: apiKey },
+    { label: 'Authorization: <raw>',          headers: { Authorization: apiKey } },
+    { label: 'Authorization: apiKey <raw>',   headers: { Authorization: `apiKey ${apiKey}` } },
+    { label: 'Authorization: Bearer <raw>',   headers: { Authorization: `Bearer ${apiKey}` } },
+    { label: 'X-API-Key: <raw>',              headers: { 'X-API-Key': apiKey } },
+    { label: 'X-Api-Key: <raw>',              headers: { 'X-Api-Key': apiKey } },
+    { label: 'Api-Key: <raw>',                headers: { 'Api-Key': apiKey } },
+    { label: 'apikey: <raw>',                 headers: { apikey: apiKey } },
   ];
 
   const results = {};
 
   for (const auth of authFormats) {
-    const headers = { Authorization: auth.header, 'Content-Type': 'application/json' };
+    const headers = { ...auth.headers, 'Content-Type': 'application/json' };
 
-    // Test /rentals first (we know this endpoint exists — returns 401 not 404)
-    const rentalsRes = await fetch(`${baseUrl}/rentals`, { headers });
-    const rentalsStatus = rentalsRes.status;
-    let rentalsBody = null;
-    if (rentalsStatus === 200) {
-      rentalsBody = await rentalsRes.json();
+    const res = await fetch(`${baseUrl}/rentals`, { headers });
+    const status = res.status;
+    let snippet = null;
+
+    try {
+      const text = await res.text();
+      // Keep response bodies short — we only need the error message
+      snippet = text.length > 400 ? text.slice(0, 400) + '…' : text;
+    } catch {
+      snippet = '<no body>';
     }
 
-    results[auth.label] = { status: rentalsStatus };
+    results[auth.label] = { status, body: snippet };
 
-    // If auth worked, fetch calendar_events (bookings)
-    if (rentalsStatus === 200) {
-      results[auth.label].rentals = rentalsBody;
-
-      const eventsRes = await fetch(
-        `${baseUrl}/calendar_events?per_page=50`,
-        { headers }
-      );
-      const eventsStatus = eventsRes.status;
-      results[auth.label].calendar_events_status = eventsStatus;
-
-      if (eventsStatus === 200) {
-        results[auth.label].calendar_events = await eventsRes.json();
-      } else {
-        results[auth.label].calendar_events_error = await eventsRes.text();
-      }
-
-      // Also try fetching rentals list for room mapping
-      break; // found working auth — no need to try others
-    }
+    if (status === 200) break; // found a working format
   }
 
-  return respond(200, { baseUrl, results });
+  return respond(200, { baseUrl, key_used: apiKey, key_length: apiKey.length, results });
 };
 
 const respond = (status, data) => ({
