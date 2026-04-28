@@ -114,11 +114,16 @@ export const handler = async (event) => {
   // when matched against a uuid column; instead we route by format.
   const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   const lookupCol = UUID_RE.test(goRoomId) ? 'id' : 'platform_id';
+  // Normalize case for platform_id matches: GonnaOrder validation forces
+  // uppercase Table Name / External Id, but we store platform_id lowercase
+  // as the booking platform returns it. Normalize the inbound value so the
+  // lookup hits regardless.
+  const lookupValue = lookupCol === 'platform_id' ? goRoomId.toLowerCase() : goRoomId;
   const { data: room, error: roomErr } = await supabase
     .from('rooms')
     .select('id, name, platform, max_capacity, platform_id')
     .eq('store_id', store.id)
-    .eq(lookupCol, goRoomId)
+    .eq(lookupCol, lookupValue)
     .maybeSingle();
 
   if (roomErr) {

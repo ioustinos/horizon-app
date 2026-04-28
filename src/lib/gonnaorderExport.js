@@ -54,12 +54,15 @@ function sanitizeTableName(s) {
     .slice(0, 50) || 'room'
 }
 
+// GonnaOrder location-label rules (empirically): max length 10,
+// alphanumeric, looks-like-uppercase per their own example (REC-TBL-RT).
+// We render Table Name and External Id from platform_id, uppercased.
 function rowForHorizonRoom(room) {
-  const tableName = room.platform_id || sanitizeTableName(room.name)
+  const baseId = (room.platform_id || sanitizeTableName(room.name)).toUpperCase().slice(0, 10)
   const description = room.name || ''  // human-readable room name lives here
   const comment = `Horizon ${room.platform || 'room'} · uuid: ${room.id}`
   return {
-    [GO_TABLE_NAME_KEY]:               tableName,
+    [GO_TABLE_NAME_KEY]:               baseId,
     'Description':                     description,
     'Comment':                         comment,
     'Location Types *':                'LOCATION',
@@ -67,7 +70,7 @@ function rowForHorizonRoom(room) {
     'Reservation minimum capacity':    '',
     'Reservation priority':            '',
     'Allow customers reservations':    'No',
-    [GO_EXT_ID_KEY]:                   room.platform_id || room.id,
+    [GO_EXT_ID_KEY]:                   baseId,
     'Address Line 1': '', 'Address Line 2': '', 'Post Code': '', 'Region': '',
     'City': '', 'GPS coordinates': '', 'Email': '', 'Phone Number': '',
   }
@@ -128,9 +131,10 @@ export function autoMatch(goRows, horizonRooms) {
     const candidates = byName.get(normalizeName(goName)) || []
     if (candidates.length === 1) {
       // Store the value that should land in the External Id column —
-      // platform_id when present, else the Horizon UUID.
+      // platform_id (uppercased to satisfy GonnaOrder), else the
+      // Horizon UUID (which is also case-insensitive on the lookup side).
       const c = candidates[0]
-      matches[i] = c.platform_id || c.id
+      matches[i] = (c.platform_id ? c.platform_id.toUpperCase() : c.id)
     } else {
       matches[i] = null
       if (candidates.length > 1) ambiguous.push(i)
