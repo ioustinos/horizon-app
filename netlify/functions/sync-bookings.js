@@ -65,7 +65,7 @@ export async function syncRoom(room, opts = { lookbackDays: 30, forwardDays: 90 
 async function syncHostHub(room, { lookbackDays }) {
   const logId    = await startLog(room.id, 'hosthub');
   const dateFrom = offsetDate(-lookbackDays);
-  const baseUrl  = 'https://eric.hosthub.com/api/2019-03-01';
+  const baseUrl  = 'https://app.hosthub.com/api/2019-03-01';
 
   const apiSecret = room.stores?.api_key_secret;
   if (!apiSecret) {

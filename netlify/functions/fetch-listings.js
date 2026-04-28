@@ -53,7 +53,7 @@ export const handler = async (event) => {
 
 // ─── HostHub ────────────────────────────────────────────────────────────────
 async function fetchHostHubListings(store) {
-  const res = await fetch('https://eric.hosthub.com/api/2019-03-01/rentals', {
+  const res = await fetch('https://app.hosthub.com/api/2019-03-01/rentals', {
     headers: {
       Authorization: store.api_key_secret,
       'Content-Type': 'application/json',
