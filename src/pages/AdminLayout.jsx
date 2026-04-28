@@ -68,6 +68,10 @@ export default function AdminLayout() {
             </svg>
             Settings
           </NavLink>
+          <NavLink to="/admin/guide" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
+            <span className="nav-link-icon" aria-hidden="true">?</span>
+            Help &amp; Guide
+          </NavLink>
         </nav>
 
         <div className="sidebar-footer">
