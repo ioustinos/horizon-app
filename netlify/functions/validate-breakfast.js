@@ -8,9 +8,9 @@
 // Validation logic:
 //   1. Parse the GonnaOrder order payload (unwrap array if needed)
 //   2. Extract storeId, room mapping ID (location.externalId), wishTime
-//   3. Identify breakfast items: top-level orderItems whose offer has a
-//      `countAgainstSlot` property (presence-based, per GonnaOrder convention).
-//      Modifiers are NOT counted.
+//   3. Identify breakfast items: top-level orderItems whose offer has
+//      offer.countAgainstSlot >= 1 (per GonnaOrder convention). Modifiers
+//      are NOT counted.
 //   4. Sum their quantities → covers requested
 //   5. Find the Horizon store by gonnaorder_store_id
 //   6. Find the room by its internal ID (room mapping ID = rooms.id)
@@ -71,13 +71,12 @@ export const handler = async (event) => {
   const wishDate = wishTime.split('T')[0];
 
   // ── Identify breakfast items ──────────────────────────────────────────────
-  // Convention: an offer that has the `countAgainstSlot` property is a
-  // breakfast item. The value itself isn't checked — only presence matters.
-  // Only TOP-LEVEL orderItems are considered; modifiers are ignored.
+  // Convention: an offer with offer.countAgainstSlot >= 1 is a breakfast
+  // item. Only TOP-LEVEL orderItems are considered; modifiers are ignored.
   const breakfastItems = (order.orderItems || []).filter(item => {
     const offer = item.offer;
     if (!offer || typeof offer !== 'object') return false;
-    return Object.prototype.hasOwnProperty.call(offer, 'countAgainstSlot');
+    return typeof offer.countAgainstSlot === 'number' && offer.countAgainstSlot >= 1;
   });
 
   const breakfastQty = breakfastItems.reduce(
