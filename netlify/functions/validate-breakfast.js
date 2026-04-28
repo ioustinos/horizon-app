@@ -57,7 +57,7 @@ const innerHandler = async (event) => {
 
   // ── Extract key fields from order ─────────────────────────────────────────
   const goStoreId   = String(order.storeId || '');
-  const goOrderUuid = order.uuid || '';
+  const goOrderUuid = order.orderUuid || order.uuid || '';
   const wishTime    = order.wishTime;
 
   // Room mapping ID lives at order.location.externalId in the standard
@@ -66,9 +66,12 @@ const innerHandler = async (event) => {
 
   if (!goStoreId) return error(400, 'Missing storeId in order');
   if (!goRoomId)  return error(400, 'Missing location.externalId in order');
-  if (!wishTime)  return error(400, 'Missing wishTime in order');
 
-  const wishDate = wishTime.split('T')[0];
+  // wishTime is optional — GonnaOrder omits it for IN_STORE_LOCATION / immediate
+  // orders. When absent, treat the order as 'now' and use today's date.
+  const wishDate = wishTime
+    ? String(wishTime).split('T')[0]
+    : new Date().toISOString().slice(0, 10);
 
   // ── Identify breakfast items ──────────────────────────────────────────────
   // Convention: an offer with offer.countAgainstSlot >= 1 is a breakfast
