@@ -21,6 +21,7 @@ export default function PullListings() {
   const [mapState, setMapState] = useState({}) // per-store mapping state
   const [selectedForCreate, setSelectedForCreate] = useState({}) // { [storeId]: Set<platform_id> }
   const [bulkOnboarding, setBulkOnboarding] = useState({})       // { [storeId]: boolean }
+  const [expanded, setExpanded] = useState({})                   // { [storeId]: boolean }
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -57,9 +58,16 @@ export default function PullListings() {
       const json = await res.json()
       if (!res.ok) throw new Error(json.error || 'Unknown error')
       setStoreState(s => ({ ...s, [store.id]: { fetching: false, error: null, listings: json.listings } }))
+      // Auto-expand the store's section so the listings are visible immediately.
+      setExpanded(e => ({ ...e, [store.id]: true }))
     } catch (err) {
       setStoreState(s => ({ ...s, [store.id]: { fetching: false, error: err.message, listings: null } }))
+      setExpanded(e => ({ ...e, [store.id]: true }))
     }
+  }
+
+  function toggleExpanded(storeId) {
+    setExpanded(e => ({ ...e, [storeId]: !e[storeId] }))
   }
 
   async function addRoom(store, listing) {
@@ -254,9 +262,9 @@ export default function PullListings() {
     <div className="page">
       <div className="page-header">
         <div>
-          <h1 className="page-title">Pull Listings</h1>
+          <h1 className="page-title">Listings Sync</h1>
           <p className="page-subtitle">
-            Fetch rental listings from the booking platform and onboard them as Horizon rooms
+            Sync rental listings from the booking platform, onboard them as Horizon rooms, and map them to GonnaOrder
           </p>
         </div>
       </div>
@@ -306,6 +314,13 @@ export default function PullListings() {
                     >
                       {ms.open ? 'Hide GonnaOrder mapping' : `Map to GonnaOrder${storeRoomCount > 0 ? ` (${storeRoomCount})` : ''}`}
                     </button>
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => toggleExpanded(store.id)}
+                      title={expanded[store.id] ? 'Collapse listings' : 'Expand listings'}
+                    >
+                      {expanded[store.id] ? '▾ Listings' : '▸ Listings'}
+                    </button>
                   </div>
                 </div>
 
@@ -315,7 +330,20 @@ export default function PullListings() {
                   </div>
                 )}
 
-                {ss.listings && (
+                {!expanded[store.id] && ss.listings && (
+                  <div style={{ marginTop: 6, fontSize: 13, color: '#566' }}>
+                    {ss.listings.length} listing{ss.listings.length === 1 ? '' : 's'} fetched
+                    {(roomsByStore[store.id] || []).length > 0 && ` · ${(roomsByStore[store.id] || []).length} onboarded`}
+                    {' · click '}
+                    <button className="btn-link" onClick={() => toggleExpanded(store.id)}
+                            style={{ background: 'none', border: 'none', color: '#3958d6', cursor: 'pointer', padding: 0, font: 'inherit', textDecoration: 'underline' }}>
+                      Listings ▾
+                    </button>
+                    {' to expand'}
+                  </div>
+                )}
+
+                {expanded[store.id] && ss.listings && (
                   ss.listings.length === 0 ? (
                     <p className="pull-empty">No listings found for this account.</p>
                   ) : (
@@ -433,7 +461,7 @@ export default function PullListings() {
                   )
                 )}
 
-                {ms.open && (
+                {expanded[store.id] && ms.open && (
                   <MappingSection
                     store={store}
                     horizonRooms={roomsByStore[store.id] || []}
