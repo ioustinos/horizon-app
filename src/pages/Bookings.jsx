@@ -187,6 +187,11 @@ export default function Bookings() {
       {/* Filters */}
       <div className="filter-panel">
         <div className="filter-row">
+          <select className="filter-select" value={filterProvider} onChange={e => setFilterProvider(e.target.value)}>
+            <option value="">All platforms</option>
+            <option value="hosthub">HostHub</option>
+            <option value="webhotelier">WebHotelier</option>
+          </select>
           <select className="filter-select" value={filterStore} onChange={e => { setFilterStore(e.target.value); setFilterRoom('') }}>
             <option value="">All stores</option>
             {stores.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
@@ -194,11 +199,6 @@ export default function Bookings() {
           <select className="filter-select" value={filterRoom} onChange={e => { setFilterRoom(e.target.value); setFilterStore('') }}>
             <option value="">All rooms</option>
             {rooms.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
-          </select>
-          <select className="filter-select" value={filterProvider} onChange={e => setFilterProvider(e.target.value)}>
-            <option value="">All platforms</option>
-            <option value="hosthub">HostHub</option>
-            <option value="webhotelier">WebHotelier</option>
           </select>
           <select className="filter-select" value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
             <option value="">All statuses</option>
