@@ -13,7 +13,7 @@ export default function Bookings() {
   // Filters
   const [filterRoom,      setFilterRoom]      = useState('')
   const [filterStore,     setFilterStore]     = useState('')
-  const [filterStatus,    setFilterStatus]    = useState('')
+  const [filterStatus,    setFilterStatus]    = useState('confirmed')
   const [filterBreakfast, setFilterBreakfast] = useState('')
   const [filterProvider,  setFilterProvider]  = useState('')
   // Default to bookings whose check-in is within the last 7 days or upcoming.
@@ -21,7 +21,7 @@ export default function Bookings() {
     const d = new Date(); d.setDate(d.getDate() - 7); return d.toISOString().slice(0, 10)
   })
   const [dateTo,   setDateTo]   = useState('')
-  const [dateFromCheckOut, setDateFromCheckOut] = useState('')
+  const [dateFromCheckOut, setDateFromCheckOut] = useState(() => new Date().toISOString().slice(0, 10))
   const [dateToCheckOut,   setDateToCheckOut]   = useState('')
   const [sortKey,  setSortKey]  = useState('check_in')
   const [sortDir,  setSortDir]  = useState('asc')
