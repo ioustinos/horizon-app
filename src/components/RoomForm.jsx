@@ -107,7 +107,7 @@ export default function RoomForm({ room, onClose, onSaved }) {
                   Copy
                 </button>
               </div>
-              <p className="field-hint">Use this ID in GonnaOrder's location external ID field to link this room.</p>
+              <p className="field-hint">Internal Horizon reference for support and debugging.</p>
             </div>
           )}
 
@@ -178,7 +178,7 @@ export default function RoomForm({ room, onClose, onSaved }) {
                 onChange={e => set('platform_id', e.target.value)}
                 placeholder="ID assigned by HostHub or WebHotelier"
               />
-              <p className="field-hint">The property ID as it appears in the booking platform (e.g. from the HostHub URL).</p>
+              <p className="field-hint">The property ID as it appears in the booking platform (e.g. from the HostHub URL). Use this value as the External ID in GonnaOrder to link this room.</p>
             </div>
           </div>
           </>

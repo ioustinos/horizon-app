@@ -7,10 +7,12 @@ const TYPE_LABEL     = { hotel: 'Hotel', airbnb: 'Airbnb', other_max_pax: 'Other
 
 export default function Rooms() {
   const [rooms, setRooms] = useState([])
+  const [stores, setStores] = useState([])
   const [loading, setLoading]       = useState(true)
   const [search, setSearch]         = useState('')
   const [filterType, setFilterType]           = useState('')
   const [filterPlatform, setFilterPlatform]   = useState('')
+  const [filterStore, setFilterStore]         = useState('')
   const [sortKey, setSortKey]       = useState('name')
   const [sortDir, setSortDir]       = useState('asc')
   const [showForm, setShowForm]     = useState(false)
@@ -28,7 +30,12 @@ export default function Rooms() {
     setLoading(false)
   }
 
-  useEffect(() => { fetchRooms() }, [])
+  useEffect(() => {
+    fetchRooms()
+    supabase.from('stores').select('id, name').order('name').then(({ data }) => {
+      setStores(data || [])
+    })
+  }, [])
 
   function handleSort(key) {
     if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
@@ -45,14 +52,15 @@ export default function Rooms() {
           (f.platform_id || '').toLowerCase().includes(q)
         const matchType     = !filterType     || f.room_type === filterType
         const matchPlatform = !filterPlatform || f.platform === filterPlatform
-        return matchSearch && matchType && matchPlatform
+        const matchStore    = !filterStore    || f.store_id === filterStore
+        return matchSearch && matchType && matchPlatform && matchStore
       })
       .sort((a, b) => {
         const av = (a[sortKey] || '').toString().toLowerCase()
         const bv = (b[sortKey] || '').toString().toLowerCase()
         return sortDir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av)
       })
-  }, [rooms, search, filterType, filterPlatform, sortKey, sortDir])
+  }, [rooms, search, filterType, filterPlatform, filterStore, sortKey, sortDir])
 
   function openCreate() { setEditTarget(null); setShowForm(true) }
   function openEdit(f)  { setEditTarget(f);    setShowForm(true) }
@@ -142,6 +150,10 @@ export default function Rooms() {
           <option value="webhotelier">WebHotelier</option>
           <option value="other">Manual</option>
         </select>
+        <select className="filter-select" value={filterStore} onChange={e => setFilterStore(e.target.value)}>
+          <option value="">All stores</option>
+          {stores.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+        </select>
         <span className="result-count">{filtered.length} room{filtered.length !== 1 ? 's' : ''}</span>
       </div>
 
@@ -149,7 +161,7 @@ export default function Rooms() {
         <div className="loading-state"><div className="spinner" /></div>
       ) : filtered.length === 0 ? (
         <div className="empty-state">
-          <p>{search || filterType || filterPlatform
+          <p>{search || filterType || filterPlatform || filterStore
             ? 'No rooms match your filters.'
             : 'No rooms yet. Create your first one.'}
           </p>

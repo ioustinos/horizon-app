@@ -21,6 +21,8 @@ export default function Bookings() {
     const d = new Date(); d.setDate(d.getDate() - 7); return d.toISOString().slice(0, 10)
   })
   const [dateTo,   setDateTo]   = useState('')
+  const [dateFromCheckOut, setDateFromCheckOut] = useState('')
+  const [dateToCheckOut,   setDateToCheckOut]   = useState('')
   const [sortKey,  setSortKey]  = useState('check_in')
   const [sortDir,  setSortDir]  = useState('asc')
 
@@ -36,7 +38,7 @@ export default function Bookings() {
 
   useEffect(() => {
     fetchBookings()
-  }, [filterRoom, filterStore, filterStatus, filterBreakfast, filterProvider, dateFrom, dateTo])
+  }, [filterRoom, filterStore, filterStatus, filterBreakfast, filterProvider, dateFrom, dateTo, dateFromCheckOut, dateToCheckOut])
 
   async function fetchBookings() {
     setLoading(true)
@@ -61,8 +63,10 @@ export default function Bookings() {
     if (filterStatus)    query = query.eq('status', filterStatus)
     if (filterProvider)  query = query.eq('provider', filterProvider)
     if (filterBreakfast !== '') query = query.eq('breakfast_included', filterBreakfast === 'yes')
-    if (dateFrom)        query = query.gte('check_in', dateFrom)
-    if (dateTo)          query = query.lte('check_in', dateTo)
+    if (dateFrom)            query = query.gte('check_in', dateFrom)
+    if (dateTo)              query = query.lte('check_in', dateTo)
+    if (dateFromCheckOut)    query = query.gte('check_out', dateFromCheckOut)
+    if (dateToCheckOut)      query = query.lte('check_out', dateToCheckOut)
 
     const { data, error } = await query
     if (!error) {
@@ -145,9 +149,11 @@ export default function Bookings() {
     setFilterProvider('')
     setDateFrom('')
     setDateTo('')
+    setDateFromCheckOut('')
+    setDateToCheckOut('')
   }
 
-  const hasFilters = filterRoom || filterStore || filterStatus || filterBreakfast || filterProvider || dateFrom || dateTo
+  const hasFilters = filterRoom || filterStore || filterStatus || filterBreakfast || filterProvider || dateFrom || dateTo || dateFromCheckOut || dateToCheckOut
 
   return (
     <div className="page">
@@ -210,6 +216,12 @@ export default function Bookings() {
           <input className="date-input" type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
           <label className="date-label">to</label>
           <input className="date-input" type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} />
+        </div>
+        <div className="filter-row">
+          <label className="date-label">Check-out from</label>
+          <input className="date-input" type="date" value={dateFromCheckOut} onChange={e => setDateFromCheckOut(e.target.value)} />
+          <label className="date-label">to</label>
+          <input className="date-input" type="date" value={dateToCheckOut} onChange={e => setDateToCheckOut(e.target.value)} />
           {hasFilters && (
             <button className="btn btn-ghost btn-sm" onClick={clearFilters}>Clear filters</button>
           )}
