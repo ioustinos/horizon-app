@@ -10,6 +10,7 @@ import SyncLogs        from './pages/SyncLogs'
 import Settings        from './pages/Settings'
 import PullListings    from './pages/PullListings'
 import Guide           from './pages/Guide'
+import WebhookLogs     from './pages/WebhookLogs'
 import TestWebhook     from './pages/TestWebhook'
 
 export default function App() {
@@ -33,6 +34,7 @@ export default function App() {
             <Route path="sync-logs"     element={<SyncLogs />} />
             <Route path="pull-listings" element={<PullListings />} />
             <Route path="guide" element={<Guide />} />
+            <Route path="webhook-logs" element={<WebhookLogs />} />
             <Route path="settings"      element={<Settings />} />
             <Route path="test-webhook"  element={<TestWebhook />} />
           </Route>
