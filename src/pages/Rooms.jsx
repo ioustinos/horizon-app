@@ -2,6 +2,31 @@ import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '../supabase'
 import RoomForm from '../components/RoomForm'
 
+
+// Inline ID + copy-to-clipboard chip used in the rooms table.
+function CopyChip({ value, displayValue, title }) {
+  const [copied, setCopied] = useState(false)
+  if (!value) return null
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+      <code className="code-chip" title={title}>{displayValue ?? value}</code>
+      <button
+        type="button"
+        onClick={() => { navigator.clipboard.writeText(value); setCopied(true); setTimeout(() => setCopied(false), 1200) }}
+        title={copied ? 'Copied!' : 'Copy to clipboard'}
+        style={{
+          border: 0, background: 'transparent', cursor: 'pointer', padding: '2px 4px',
+          fontSize: 13, lineHeight: 1, color: copied ? '#16a34a' : '#64748b',
+          borderRadius: 3,
+        }}
+        aria-label="Copy"
+      >
+        {copied ? '✓' : '⧉'}
+      </button>
+    </span>
+  )
+}
+
 const PLATFORM_LABEL = { hosthub: 'HostHub', webhotelier: 'WebHotelier', other: 'Manual' }
 const TYPE_LABEL     = { hotel: 'Hotel', airbnb: 'Airbnb', other_max_pax: 'Other (Max Pax)' }
 
@@ -205,12 +230,24 @@ export default function Rooms() {
                       <span className={`badge badge-platform ${f.platform}`}>{PLATFORM_LABEL[f.platform]}</span>
                     </td>
                     <td>
-                      <code className="code-chip" title="Internal Horizon ID — use this in GonnaOrder">{f.id.slice(0, 8)}…</code>
+                      <CopyChip
+                        value={f.id}
+                        displayValue={`${f.id.slice(0, 8)}…`}
+                        title="Internal Horizon ID — click ⧉ to copy in full"
+                      />
                     </td>
                     <td>
-                      {f.platform_id
-                        ? <code className="code-chip">{f.platform_id}</code>
-                        : <span className="muted">—</span>}
+                      {f.platform_id ? (
+                        <CopyChip value={f.platform_id} title="Platform ID — use this as External Id in GonnaOrder" />
+                      ) : f.platform === 'other' ? (
+                        <CopyChip
+                          value={f.id}
+                          displayValue={`${f.id.slice(0, 8)}… (UUID)`}
+                          title="No platform integration — use the Horizon UUID as External Id in GonnaOrder"
+                        />
+                      ) : (
+                        <span className="muted">—</span>
+                      )}
                     </td>
                     <td className="cell-number">{f.max_capacity ?? <span className="muted">—</span>}</td>
                     <td className="cell-date">

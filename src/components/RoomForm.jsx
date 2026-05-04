@@ -171,17 +171,57 @@ export default function RoomForm({ room, onClose, onSaved }) {
           <div className="form-grid">
             <div className="field-group span-2">
               <label htmlFor="f-platform-id">Platform ID</label>
-              <input
-                id="f-platform-id"
-                type="text"
-                value={form.platform_id}
-                onChange={e => set('platform_id', e.target.value)}
-                placeholder="ID assigned by HostHub or WebHotelier"
-              />
-              <p className="field-hint">The property ID as it appears in the booking platform (e.g. from the HostHub URL). Use this value as the External ID in GonnaOrder to link this room.</p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <input
+                  id="f-platform-id"
+                  type="text"
+                  value={form.platform_id}
+                  onChange={e => set('platform_id', e.target.value)}
+                  placeholder="ID assigned by HostHub or WebHotelier"
+                  style={{ flex: 1 }}
+                />
+                {form.platform_id && (
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => navigator.clipboard.writeText(form.platform_id)}
+                    title="Copy Platform ID"
+                  >
+                    Copy
+                  </button>
+                )}
+              </div>
+              <p className="field-hint">The property ID as it appears in the booking platform (e.g. from the HostHub URL). <strong>Use this value as the External ID in GonnaOrder</strong> to link this room.</p>
             </div>
           </div>
           </>
+          )}
+
+          {form.platform === 'other' && isEdit && (
+            <>
+            <h3 className="form-section-title">GonnaOrder External ID</h3>
+            <p className="form-section-hint">
+              This room has no booking-platform integration, so use the Horizon UUID below as
+              the External ID on the matching GonnaOrder location.
+            </p>
+            <div className="form-grid">
+              <div className="field-group span-2">
+                <label>External ID (Horizon UUID)</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <code className="code-chip" style={{ flex: 1, padding: '0.5rem 0.7rem', fontSize: '0.85rem' }}>{room.id}</code>
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm"
+                    onClick={() => navigator.clipboard.writeText(room.id)}
+                    title="Copy External ID"
+                  >
+                    Copy
+                  </button>
+                </div>
+                <p className="field-hint">Paste this value into the External ID field of the matching GonnaOrder table/location.</p>
+              </div>
+            </div>
+            </>
           )}
 
           {/* ── Capacity ── */}
