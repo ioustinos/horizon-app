@@ -352,6 +352,23 @@ export default function Guide() {
           the client sent it via WhatsApp, copy carefully: lowercase <code>t</code> characters can
           look like dashes in green-highlighted text.
         </div>
+
+        <h3>HostHub stores: configure breakfast keywords</h3>
+        <p>
+          HostHub bookings carry a free-text <code>meal_plan</code> field that the host fills in
+          (e.g. <em>"Στην τιμή δωματίου περιλαμβάνεται πρωινό"</em>, <em>"BB"</em>,
+          <em>"Half Board"</em>). To distinguish breakfast-included bookings from room-only ones,
+          fill the <strong>Breakfast — meal-plan keywords</strong> section in the store form with
+          one keyword per line. A booking is treated as breakfast-included when its
+          <code>meal_plan</code> field contains <strong>any</strong> of those keywords as a
+          substring (case-insensitive).
+        </p>
+        <p>
+          Leave the field blank to keep the legacy default — every HostHub booking is treated as
+          breakfast-included. Useful for properties where the rate plan implies breakfast for all
+          stays.
+        </p>
+
       </section>
 
       {/* ── Step 2: Fetch ─────────────────────────────────────────────────── */}

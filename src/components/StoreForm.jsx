@@ -1,6 +1,19 @@
 import { useState } from 'react'
 import { supabase } from '../supabase'
 
+// Dedupe an array of strings, preserving order.
+function dedupe(arr) {
+  const seen = new Set()
+  const out = []
+  for (const v of arr) {
+    const key = v.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(v)
+  }
+  return out
+}
+
 
 
 export default function StoreForm({ store, onClose, onSaved }) {
@@ -13,6 +26,10 @@ export default function StoreForm({ store, onClose, onSaved }) {
     platform:            store?.platform || 'hosthub',
     api_key_name:        store?.api_key_name || '',
     api_key_secret:      store?.api_key_secret || '',
+    // One entry per line in the textarea — joined back to an array on save.
+    meal_plan_breakfast_values: Array.isArray(store?.meal_plan_breakfast_values)
+      ? store.meal_plan_breakfast_values.join('\n')
+      : '',
   })
   const [error, setError]   = useState('')
   const [saving, setSaving] = useState(false)
@@ -34,6 +51,13 @@ export default function StoreForm({ store, onClose, onSaved }) {
       platform:              form.platform,
       api_key_name:          form.api_key_name.trim() || null,
       api_key_secret:        form.api_key_secret.trim() || null,
+      // Convert textarea (one per line) → trimmed, deduped, non-empty string array.
+      meal_plan_breakfast_values: dedupe(
+        (form.meal_plan_breakfast_values || '')
+          .split(/\r?\n/)
+          .map(s => s.trim())
+          .filter(Boolean)
+      ),
       updated_at:            new Date().toISOString(),
     }
 
@@ -175,6 +199,39 @@ export default function StoreForm({ store, onClose, onSaved }) {
               />
             </div>
           </div>
+          )}
+
+          {form.platform === 'hosthub' && (
+            <>
+            <h3 className="form-section-title">Breakfast — meal-plan keywords</h3>
+            <p className="form-section-hint">
+              For HostHub stores: HostHub bookings carry a free-text <code>meal_plan</code> field
+              that the host fills in (e.g. <em>"Στην τιμή δωματίου περιλαμβάνεται πρωινό"</em>,
+              <em>"BB"</em>, <em>"Half Board"</em>). Add one keyword per line below — a booking is
+              treated as breakfast-included when its <code>meal_plan</code> contains
+              <strong> any </strong> of these as a substring (case-insensitive).
+              Leave blank to keep the legacy default of treating every HostHub booking as
+              breakfast-included.
+            </p>
+            <div className="form-grid">
+              <div className="field-group span-2">
+                <label htmlFor="s-mealplan">Allowlist</label>
+                <textarea
+                  id="s-mealplan"
+                  rows={4}
+                  value={form.meal_plan_breakfast_values}
+                  onChange={e => set('meal_plan_breakfast_values', e.target.value)}
+                  placeholder={'πρωινό\nbreakfast included\nBB\nHalf Board'}
+                  style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 13 }}
+                />
+                <p className="field-hint">
+                  One entry per line. Substring matching is case-insensitive. Be specific enough
+                  not to false-match — e.g. <code>BB</code> alone might be too short if other
+                  meal_plan strings happen to contain those letters.
+                </p>
+              </div>
+            </div>
+            </>
           )}
 
           {error && <p className="form-error">{error}</p>}

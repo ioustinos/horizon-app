@@ -23,7 +23,7 @@ export const handler = async () => {
   // Load rooms due for sync — join stores to get API credentials
   const { data: rooms, error } = await supabase
     .from('rooms')
-    .select('*, stores(api_key_name, api_key_secret)')
+    .select('*, stores(api_key_name, api_key_secret, meal_plan_breakfast_values)')
     .or(`last_synced_at.is.null,last_synced_at.lt.${cutoff}`);
 
   if (error) return { statusCode: 500, body: JSON.stringify({ error: error.message }) };
@@ -49,7 +49,7 @@ export async function syncRoom(room, opts = { lookbackDays: 30, forwardDays: 90 
   if (!room.stores) {
     const { data } = await supabase
       .from('rooms')
-      .select('*, stores(api_key_name, api_key_secret)')
+      .select('*, stores(api_key_name, api_key_secret, meal_plan_breakfast_values)')
       .eq('id', room.id)
       .single();
     if (data) room = data;
@@ -89,13 +89,21 @@ async function syncHostHub(room, { lookbackDays }) {
     const data   = await res.json();
     const events = (data.data || []).filter(e => e.type === 'Booking');
 
+    // Per-store meal-plan allowlist (substring, case-insensitive). Empty
+    // array → backwards-compat 'all bookings include breakfast'.
+    const mealPlanAllowlist = Array.isArray(room.stores?.meal_plan_breakfast_values)
+      ? room.stores.meal_plan_breakfast_values.filter(s => typeof s === 'string' && s.trim().length)
+      : [];
+
     const stats = await upsertBookings(room, 'hosthub', events, (b) => ({
       external_id:        String(b.id),
       room_code:          String(b.rental?.id || room.platform_id),
       check_in:           b.date_from,
       check_out:          b.date_to,
       guest_count:        parseInt(b.guest_number || b.guest_adults || 1, 10),
-      breakfast_included: true, // Airbnb/HostHub: all bookings include breakfast
+      breakfast_included: mealPlanAllowlist.length === 0
+        ? true  // backwards-compat: no allowlist configured → all bookings = breakfast
+        : matchesAnyAllowlistEntry(b.meal_plan, mealPlanAllowlist),
       status:             b.cancelled_at ? 'cancelled' : 'confirmed',
       raw_data:           b,
     }), dateFrom);
@@ -312,3 +320,18 @@ function offsetDate(days) {
   d.setDate(d.getDate() + days);
   return d.toISOString().split('T')[0];
 }
+
+// Substring (case-insensitive) match — meal_plan field against an array of
+// allowlist entries. Returns true if any allowlist entry is contained in the
+// meal_plan string.
+function matchesAnyAllowlistEntry(mealPlan, allowlist) {
+  if (!mealPlan || typeof mealPlan !== 'string') return false;
+  const haystack = mealPlan.toLowerCase();
+  for (const entry of allowlist) {
+    const needle = String(entry || '').trim().toLowerCase();
+    if (!needle) continue;
+    if (haystack.includes(needle)) return true;
+  }
+  return false;
+}
+
