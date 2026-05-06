@@ -157,11 +157,14 @@ export default function StoreForm({ store, onClose, onSaved }) {
               >
                 <option value="hosthub">HostHub</option>
                 <option value="webhotelier">WebHotelier</option>
+                <option value="roomrack">RoomRack</option>
                 <option value="other">Other (no booking platform)</option>
               </select>
               <p className="field-hint">
                 {form.platform === 'webhotelier'
                   ? 'WebHotelier uses Basic Auth (username + password).'
+                  : form.platform === 'roomrack'
+                  ? 'RoomRack uses a per-property ApiToken (enable it in the PMS at Setup → Device Interface).'
                   : form.platform === 'other'
                   ? 'Rooms will be managed manually — no API sync.'
                   : 'HostHub uses an API key for authentication.'}
@@ -170,6 +173,7 @@ export default function StoreForm({ store, onClose, onSaved }) {
           </div>
           {form.platform !== 'other' && (
           <div className="form-grid">
+            {form.platform !== 'roomrack' && (
             <div className="field-group">
               <label htmlFor="s-key-name">
                 {form.platform === 'webhotelier' ? 'Username / Property Code' : 'API Key Name'}
@@ -185,18 +189,26 @@ export default function StoreForm({ store, onClose, onSaved }) {
                 <p className="field-hint">This is both the API username and the property code.</p>
               )}
             </div>
+            )}
             <div className="field-group">
               <label htmlFor="s-key-secret">
-                {form.platform === 'webhotelier' ? 'API Password' : 'API Key Secret'}
+                {form.platform === 'webhotelier' ? 'API Password'
+                  : form.platform === 'roomrack' ? 'ApiToken'
+                  : 'API Key Secret'}
               </label>
               <input
                 id="s-key-secret"
                 type="password"
                 value={form.api_key_secret}
                 onChange={e => set('api_key_secret', e.target.value)}
-                placeholder={form.platform === 'webhotelier' ? 'API password' : 'Password / secret key'}
+                placeholder={form.platform === 'webhotelier' ? 'API password'
+                  : form.platform === 'roomrack' ? 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'
+                  : 'Password / secret key'}
                 autoComplete="new-password"
               />
+              {form.platform === 'roomrack' && (
+                <p className="field-hint">Per-property token from RoomRack PMS → Setup → Device Interface.</p>
+              )}
             </div>
           </div>
           )}

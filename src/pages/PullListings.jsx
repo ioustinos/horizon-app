@@ -73,10 +73,11 @@ export default function PullListings() {
   async function addRoom(store, listing) {
     const key = `${store.id}:${listing.platform_id}`
     setActionLoading(a => ({ ...a, [key]: true }))
-    const isWebHotelier = listing.platform === 'webhotelier'
+    // WebHotelier and RoomRack are hotel PMS — HostHub is short-term rental.
+    const isHotelPms = listing.platform === 'webhotelier' || listing.platform === 'roomrack'
     const { error } = await supabase.from('rooms').insert({
       name:         listing.name,
-      room_type:    isWebHotelier ? 'hotel' : 'airbnb',
+      room_type:    isHotelPms ? 'hotel' : 'airbnb',
       platform_id:  listing.platform_id,
       platform:     listing.platform,
       store_id:     store.id,
@@ -218,7 +219,8 @@ export default function PullListings() {
         .filter(l => !roomByPlatformId[l.platform_id])
         .map(l => ({
           name:         l.name,
-          room_type:    l.platform === 'webhotelier' ? 'hotel' : 'airbnb',
+          // WebHotelier and RoomRack are hotel PMS — HostHub is short-term rental.
+          room_type:    (l.platform === 'webhotelier' || l.platform === 'roomrack') ? 'hotel' : 'airbnb',
           platform_id:  l.platform_id,
           platform:     l.platform,
           store_id:     store.id,
@@ -286,8 +288,10 @@ export default function PullListings() {
                 <div className="pull-store-header">
                   <div className="pull-store-identity">
                     <span className="pull-store-name">{store.name}</span>
-                    <span className={`badge ${store.platform === 'webhotelier' ? 'badge-info' : 'badge-neutral'}`} style={{ marginLeft: '0.5rem', fontSize: '0.7rem' }}>
-                      {store.platform === 'webhotelier' ? 'WebHotelier' : 'HostHub'}
+                    <span className={`badge ${store.platform === 'webhotelier' || store.platform === 'roomrack' ? 'badge-info' : 'badge-neutral'}`} style={{ marginLeft: '0.5rem', fontSize: '0.7rem' }}>
+                      {store.platform === 'webhotelier' ? 'WebHotelier'
+                        : store.platform === 'roomrack' ? 'RoomRack'
+                        : 'HostHub'}
                     </span>
                     {store.accommodation_company && (
                       <span className="pull-store-company">{store.accommodation_company}</span>

@@ -152,6 +152,7 @@ export default function RoomForm({ room, onClose, onSaved }) {
               <select id="f-platform" value={form.platform} onChange={e => set('platform', e.target.value)}>
                 <option value="hosthub">HostHub</option>
                 <option value="webhotelier">WebHotelier</option>
+                <option value="roomrack">RoomRack</option>
                 <option value="other">Other (manual)</option>
               </select>
               {form.platform === 'other' && (
@@ -177,7 +178,7 @@ export default function RoomForm({ room, onClose, onSaved }) {
                   type="text"
                   value={form.platform_id}
                   onChange={e => set('platform_id', e.target.value)}
-                  placeholder="ID assigned by HostHub or WebHotelier"
+                  placeholder="ID/code from HostHub, WebHotelier, or RoomRack room number"
                   style={{ flex: 1 }}
                 />
                 {form.platform_id && (
@@ -191,7 +192,7 @@ export default function RoomForm({ room, onClose, onSaved }) {
                   </button>
                 )}
               </div>
-              <p className="field-hint">The property ID as it appears in the booking platform (e.g. from the HostHub URL). <strong>Use this value as the External ID in GonnaOrder</strong> to link this room.</p>
+              <p className="field-hint">The property/room ID as it appears in the booking platform (e.g. the rental ID from the HostHub URL, the room code from WebHotelier, or the room number from RoomRack). <strong>Use this value as the External ID in GonnaOrder</strong> to link this room.</p>
             </div>
           </div>
           </>

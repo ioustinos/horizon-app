@@ -27,7 +27,7 @@ function CopyChip({ value, displayValue, title }) {
   )
 }
 
-const PLATFORM_LABEL = { hosthub: 'HostHub', webhotelier: 'WebHotelier', other: 'Manual' }
+const PLATFORM_LABEL = { hosthub: 'HostHub', webhotelier: 'WebHotelier', roomrack: 'RoomRack', other: 'Manual' }
 const TYPE_LABEL     = { hotel: 'Hotel', airbnb: 'Airbnb', other_max_pax: 'Other (Max Pax)' }
 
 export default function Rooms() {
@@ -173,6 +173,7 @@ export default function Rooms() {
           <option value="">All platforms</option>
           <option value="hosthub">HostHub</option>
           <option value="webhotelier">WebHotelier</option>
+          <option value="roomrack">RoomRack</option>
           <option value="other">Manual</option>
         </select>
         <select className="filter-select" value={filterStore} onChange={e => setFilterStore(e.target.value)}>
