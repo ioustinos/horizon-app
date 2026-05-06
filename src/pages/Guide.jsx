@@ -469,12 +469,52 @@ export default function Guide() {
           </div>
         </div>
 
+        <h3>Path C · Single-room manual paste (no xlsx)</h3>
+        <p>
+          For one-off rooms — typically <strong>max-pax (Other)</strong> rooms you've added directly
+          in Horizon, or quick fixes when you only need to wire up one or two locations. No file
+          upload involved.
+        </p>
+        <Step n={1}>In Horizon, go to <a href="/admin/rooms">Rooms</a>. Find the row you want to map.</Step>
+        <Step n={2}>
+          In the <strong>Platform ID</strong> column you'll see either the platform_id (for HostHub
+          / WebHotelier rooms) or the Horizon UUID (for max-pax rooms). Click the small{' '}
+          <code>⧉</code> icon next to it — the value lands on your clipboard and the icon flashes a
+          green ✓.
+        </Step>
+        <Step n={3}>
+          (Alternative) Click <strong>Edit</strong> on the row. For max-pax rooms there's a
+          dedicated <em>"GonnaOrder External ID"</em> section with a primary <strong>Copy</strong>{' '}
+          button.
+        </Step>
+        <Step n={4}>
+          In GonnaOrder admin, open the matching <strong>Tables → location</strong> for that room.
+        </Step>
+        <Step n={5}>
+          Paste the value into the <strong>External Id</strong> field on the GonnaOrder table.
+          Save.
+        </Step>
+        <Step n={6}>
+          Repeat for any additional rooms you want to wire up. The validator looks each one up
+          identically — there's no difference between the xlsx-mapped rooms and the manually-pasted
+          ones once the External Id is in place.
+        </Step>
+
+        <div className="callout tip">
+          <strong>When to choose Path C over A or B:</strong> Path C is great for max-pax rooms
+          (which don't have a platform_id), for one-off corrections after a Path B run, or when you
+          have just a handful of rooms and don't want to mess with files. For larger batches the
+          xlsx paths are still faster — the Path C steps don't scale past ~10 rooms before xlsx
+          starts winning.
+        </div>
+
         <div className="callout warn">
           <strong>Heads-up about the file format:</strong> GonnaOrder is strict about the Table Name
           column — alphanumeric (uppercase letters, digits, dashes), at most 10 characters. Horizon
           generates Table Names automatically from the room's platform ID (e.g.{' '}
           <code>X9C415F73D</code>), so you don't normally need to worry — but if you edit the file
-          by hand, keep that rule in mind.
+          by hand, keep that rule in mind. (Path C bypasses this entirely — you're only setting
+          External Id, not Table Name.)
         </div>
       </section>
 
