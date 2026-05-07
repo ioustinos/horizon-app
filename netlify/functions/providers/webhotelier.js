@@ -77,6 +77,14 @@ export async function syncWebHotelier(room, { lookbackDays, forwardDays }) {
       });
     }
 
+    const rawResponse = {
+      url: res.url,
+      http_status: res.status,
+      total_in_response: allBookings.length,
+      filtered_for_this_room: bookings.length,
+      sample_first_booking: bookings[0] || allBookings[0] || null,
+    };
+
     const stats = await upsertBookings(room, 'webhotelier', bookings, (b) => {
       const stay     = b.roomStay || {};
       const room0    = b.rooms?.[0] || {};
@@ -106,10 +114,10 @@ export async function syncWebHotelier(room, { lookbackDays, forwardDays }) {
     }, dateFrom);
 
     await markRoomSynced(room.id);
-    await endLog(logId, 'success', stats);
+    await endLog(logId, 'success', stats, null, rawResponse);
     return { room_id: room.id, name: room.name, provider: 'webhotelier', ...stats };
   } catch (err) {
-    await endLog(logId, 'failed', {}, err.message);
+    await endLog(logId, 'failed', {}, err.message, { exception: err.message, stack: (err.stack || '').slice(0, 1000) });
     return { room_id: room.id, name: room.name, provider: 'webhotelier', error: err.message };
   }
 }

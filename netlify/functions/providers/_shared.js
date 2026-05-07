@@ -99,7 +99,7 @@ export async function startLog(room_id, provider) {
   return data?.id;
 }
 
-export async function endLog(logId, status, stats = {}, error_message = null) {
+export async function endLog(logId, status, stats = {}, error_message = null, raw_response = null) {
   if (!logId) return;
   await supabase.from('sync_logs').update({
     status,
@@ -109,6 +109,7 @@ export async function endLog(logId, status, stats = {}, error_message = null) {
     bookings_updated:  stats.updated  || 0,
     bookings_deleted:  stats.deleted  || 0,
     error_message,
+    raw_response,
   }).eq('id', logId);
 }
 

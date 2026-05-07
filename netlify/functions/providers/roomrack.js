@@ -98,6 +98,14 @@ export async function syncRoomRack(room, { lookbackDays, forwardDays }) {
       );
     }
 
+    const rawResponse = {
+      url: res.url,
+      http_status: res.status,
+      total_reservations_in_response: Array.isArray(data) ? data.length : (data?.reservations?.length || 0),
+      filtered_for_this_room: reservations.length,
+      sample_first_reservation: reservations[0] || null,
+    };
+
     const stats = await upsertBookings(room, 'roomrack', reservations, (b) => {
       const adults   = parseInt(b.adults   ?? 0, 10);
       const children = parseInt(b.children ?? 0, 10);
@@ -122,10 +130,10 @@ export async function syncRoomRack(room, { lookbackDays, forwardDays }) {
     }, dateFromIso);
 
     await markRoomSynced(room.id);
-    await endLog(logId, 'success', stats);
+    await endLog(logId, 'success', stats, null, rawResponse);
     return { room_id: room.id, name: room.name, provider: 'roomrack', ...stats };
   } catch (err) {
-    await endLog(logId, 'failed', {}, err.message);
+    await endLog(logId, 'failed', {}, err.message, { exception: err.message, stack: (err.stack || '').slice(0, 1000) });
     return { room_id: room.id, name: room.name, provider: 'roomrack', error: err.message };
   }
 }

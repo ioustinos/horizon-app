@@ -37,14 +37,25 @@ export async function syncHostHub(room, { lookbackDays }) {
       'Content-Type': 'application/json',
     };
 
-    const res = await fetch(
-      `${BASE_URL}/rentals/${room.platform_id}/calendar-events?date_from_gt=${dateFrom}&is_visible=all`,
-      { headers }
-    );
-    if (!res.ok) throw new Error(`HostHub API error ${res.status}: ${await res.text()}`);
+    const url = `${BASE_URL}/rentals/${room.platform_id}/calendar-events?date_from_gt=${dateFrom}&is_visible=all`;
+    const res = await fetch(url, { headers });
+    if (!res.ok) {
+      const body = await res.text();
+      const summary = { url, http_status: res.status, error_body: body.slice(0, 600) };
+      await endLog(logId, 'failed', {}, `HostHub API error ${res.status}: ${body}`, summary);
+      return { room_id: room.id, name: room.name, provider: 'hosthub', error: `HostHub API error ${res.status}` };
+    }
 
     const data   = await res.json();
     const events = (data.data || []).filter(e => e.type === 'Booking');
+    const rawResponse = {
+      url,
+      http_status: res.status,
+      total_events: (data.data || []).length,
+      booking_events: events.length,
+      sample_first_event: events[0] || null,
+      response_object: data?.object,
+    };
 
     // Per-store meal-plan allowlist (substring, case-insensitive). Empty
     // array → backwards-compat 'all bookings include breakfast'.
@@ -66,10 +77,10 @@ export async function syncHostHub(room, { lookbackDays }) {
     }), dateFrom);
 
     await markRoomSynced(room.id);
-    await endLog(logId, 'success', stats);
+    await endLog(logId, 'success', stats, null, rawResponse);
     return { room_id: room.id, name: room.name, provider: 'hosthub', ...stats };
   } catch (err) {
-    await endLog(logId, 'failed', {}, err.message);
+    await endLog(logId, 'failed', {}, err.message, { exception: err.message, stack: (err.stack || '').slice(0, 1000) });
     return { room_id: room.id, name: room.name, provider: 'hosthub', error: err.message };
   }
 }

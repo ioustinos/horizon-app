@@ -193,13 +193,24 @@ export default function Bookings() {
             <option value="webhotelier">WebHotelier</option>
             <option value="roomrack">RoomRack</option>
           </select>
-          <select className="filter-select" value={filterStore} onChange={e => { setFilterStore(e.target.value); setFilterRoom('') }}>
+          <select className="filter-select" value={filterStore} onChange={e => {
+            const newStore = e.target.value
+            setFilterStore(newStore)
+            // Clear the room filter only if the currently-selected room
+            // doesn't belong to the new store — avoids leaving an inconsistent state.
+            if (filterRoom) {
+              const r = rooms.find(x => x.id === filterRoom)
+              if (newStore && r && r.store_id !== newStore) setFilterRoom('')
+            }
+          }}>
             <option value="">All stores</option>
             {stores.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
-          <select className="filter-select" value={filterRoom} onChange={e => { setFilterRoom(e.target.value); setFilterStore('') }}>
-            <option value="">All rooms</option>
-            {rooms.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+          <select className="filter-select" value={filterRoom} onChange={e => setFilterRoom(e.target.value)}>
+            <option value="">All rooms{filterStore ? ' in selected store' : ''}</option>
+            {rooms
+              .filter(f => !filterStore || f.store_id === filterStore)
+              .map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
           </select>
           <select className="filter-select" value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
             <option value="">All statuses</option>
