@@ -57,8 +57,14 @@ export async function syncHostHub(room, { lookbackDays }) {
       response_object: data?.object,
     };
 
-    // Per-store meal-plan allowlist (substring, case-insensitive). Empty
-    // array → backwards-compat 'all bookings include breakfast'.
+    // Breakfast detection has two knobs on the linked store:
+    //  1) bypass_meal_plan_check (boolean, default true) — when true, every
+    //     booking is treated as breakfast-included regardless of meal_plan
+    //     text. Useful for properties whose rate plans always include
+    //     breakfast and don't bother filling meal_plan consistently.
+    //  2) meal_plan_breakfast_values (string[]) — substring (case-insensitive)
+    //     allowlist applied only when bypass is off.
+    const bypass = room.stores?.bypass_meal_plan_check !== false; // default true
     const mealPlanAllowlist = Array.isArray(room.stores?.meal_plan_breakfast_values)
       ? room.stores.meal_plan_breakfast_values.filter(s => typeof s === 'string' && s.trim().length)
       : [];
@@ -69,8 +75,8 @@ export async function syncHostHub(room, { lookbackDays }) {
       check_in:           b.date_from,
       check_out:          b.date_to,
       guest_count:        parseInt(b.guest_number || b.guest_adults || 1, 10),
-      breakfast_included: mealPlanAllowlist.length === 0
-        ? true  // backwards-compat: no allowlist configured → all bookings = breakfast
+      breakfast_included: bypass
+        ? true
         : matchesAnyAllowlistEntry(b.meal_plan, mealPlanAllowlist),
       status:             b.cancelled_at ? 'cancelled' : 'confirmed',
       raw_data:           b,
