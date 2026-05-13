@@ -9,6 +9,7 @@ import { createClient } from '@supabase/supabase-js';
 import { fetchHostHubListings }     from './providers/hosthub.js';
 import { fetchWebHotelierListings } from './providers/webhotelier.js';
 import { fetchRoomRackListings }    from './providers/roomrack.js';
+import { fetchHotelizerListings }   from './providers/hotelizer.js';
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -19,6 +20,7 @@ const LISTING_PROVIDERS = {
   hosthub:     fetchHostHubListings,
   webhotelier: fetchWebHotelierListings,
   roomrack:    fetchRoomRackListings,
+  hotelizer:   fetchHotelizerListings,
 };
 
 export const handler = async (event) => {

@@ -30,7 +30,6 @@ export default function StoreForm({ store, onClose, onSaved }) {
     meal_plan_breakfast_values: Array.isArray(store?.meal_plan_breakfast_values)
       ? store.meal_plan_breakfast_values.join('\n')
       : '',
-    bypass_meal_plan_check: store?.bypass_meal_plan_check !== false, // default true for new stores
   })
   const [error, setError]   = useState('')
   const [saving, setSaving] = useState(false)
@@ -53,7 +52,6 @@ export default function StoreForm({ store, onClose, onSaved }) {
       api_key_name:          form.api_key_name.trim() || null,
       api_key_secret:        form.api_key_secret.trim() || null,
       // Convert textarea (one per line) → trimmed, deduped, non-empty string array.
-      bypass_meal_plan_check: !!form.bypass_meal_plan_check,
       meal_plan_breakfast_values: dedupe(
         (form.meal_plan_breakfast_values || '')
           .split(/\r?\n/)
@@ -160,6 +158,7 @@ export default function StoreForm({ store, onClose, onSaved }) {
                 <option value="hosthub">HostHub</option>
                 <option value="webhotelier">WebHotelier</option>
                 <option value="roomrack">RoomRack</option>
+                <option value="hotelizer">Hotelizer</option>
                 <option value="other">Other (no booking platform)</option>
               </select>
               <p className="field-hint">
@@ -167,6 +166,8 @@ export default function StoreForm({ store, onClose, onSaved }) {
                   ? 'WebHotelier uses Basic Auth (username + password).'
                   : form.platform === 'roomrack'
                   ? 'RoomRack uses a per-property ApiToken (enable it in the PMS at Setup → Device Interface).'
+                  : form.platform === 'hotelizer'
+                  ? 'Hotelizer uses Basic Auth (username + password). Public demo: username / pass.'
                   : form.platform === 'other'
                   ? 'Rooms will be managed manually — no API sync.'
                   : 'HostHub uses an API key for authentication.'}
@@ -178,17 +179,24 @@ export default function StoreForm({ store, onClose, onSaved }) {
             {form.platform !== 'roomrack' && (
             <div className="field-group">
               <label htmlFor="s-key-name">
-                {form.platform === 'webhotelier' ? 'Username / Property Code' : 'API Key Name'}
+                {form.platform === 'webhotelier' ? 'Username / Property Code'
+                  : form.platform === 'hotelizer' ? 'Username'
+                  : 'API Key Name'}
               </label>
               <input
                 id="s-key-name"
                 type="text"
                 value={form.api_key_name}
                 onChange={e => set('api_key_name', e.target.value)}
-                placeholder={form.platform === 'webhotelier' ? 'e.g. HRZNTEST' : 'Username / key identifier'}
+                placeholder={form.platform === 'webhotelier' ? 'e.g. HRZNTEST'
+                  : form.platform === 'hotelizer' ? 'e.g. username (demo)'
+                  : 'Username / key identifier'}
               />
               {form.platform === 'webhotelier' && (
                 <p className="field-hint">This is both the API username and the property code.</p>
+              )}
+              {form.platform === 'hotelizer' && (
+                <p className="field-hint">Issued by Hotelizer per property. Demo: <code>username</code>.</p>
               )}
             </div>
             )}
@@ -196,6 +204,7 @@ export default function StoreForm({ store, onClose, onSaved }) {
               <label htmlFor="s-key-secret">
                 {form.platform === 'webhotelier' ? 'API Password'
                   : form.platform === 'roomrack' ? 'ApiToken'
+                  : form.platform === 'hotelizer' ? 'Password'
                   : 'API Key Secret'}
               </label>
               <input
@@ -205,6 +214,7 @@ export default function StoreForm({ store, onClose, onSaved }) {
                 onChange={e => set('api_key_secret', e.target.value)}
                 placeholder={form.platform === 'webhotelier' ? 'API password'
                   : form.platform === 'roomrack' ? 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'
+                  : form.platform === 'hotelizer' ? 'e.g. pass (demo)'
                   : 'Password / secret key'}
                 autoComplete="new-password"
               />
@@ -217,48 +227,31 @@ export default function StoreForm({ store, onClose, onSaved }) {
 
           {form.platform === 'hosthub' && (
             <>
-            <h3 className="form-section-title">Breakfast detection</h3>
+            <h3 className="form-section-title">Breakfast — meal-plan keywords</h3>
             <p className="form-section-hint">
-              How HostHub bookings on this store get marked as breakfast-included.
+              For HostHub stores: HostHub bookings carry a free-text <code>meal_plan</code> field
+              that the host fills in (e.g. <em>"Στην τιμή δωματίου περιλαμβάνεται πρωινό"</em>,
+              <em>"BB"</em>, <em>"Half Board"</em>). Add one keyword per line below — a booking is
+              treated as breakfast-included when its <code>meal_plan</code> contains
+              <strong> any </strong> of these as a substring (case-insensitive).
+              Leave blank to keep the legacy default of treating every HostHub booking as
+              breakfast-included.
             </p>
-
             <div className="form-grid">
               <div className="field-group span-2">
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={!!form.bypass_meal_plan_check}
-                    onChange={e => set('bypass_meal_plan_check', e.target.checked)}
-                  />
-                  <span><strong>Treat all bookings as breakfast-included</strong> (bypass keyword check)</span>
-                </label>
-                <p className="field-hint">
-                  When ON, every HostHub booking is treated as breakfast-included regardless of the
-                  <code> meal_plan </code> text. Use for properties where breakfast is always part
-                  of the rate. When OFF, the keyword allowlist below is applied instead.
-                </p>
-              </div>
-            </div>
-
-            <div className="form-grid" style={{ opacity: form.bypass_meal_plan_check ? 0.5 : 1 }}>
-              <div className="field-group span-2">
-                <label htmlFor="s-mealplan">Meal-plan keyword allowlist</label>
+                <label htmlFor="s-mealplan">Allowlist</label>
                 <textarea
                   id="s-mealplan"
                   rows={4}
                   value={form.meal_plan_breakfast_values}
                   onChange={e => set('meal_plan_breakfast_values', e.target.value)}
                   placeholder={'πρωινό\nbreakfast included\nBB\nHalf Board'}
-                  disabled={!!form.bypass_meal_plan_check}
                   style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 13 }}
                 />
                 <p className="field-hint">
-                  One entry per line. A booking is breakfast-included if its <code>meal_plan</code>{' '}
-                  contains <strong>any</strong> of these substrings (case-insensitive). HostHub
-                  bookings carry meal_plan as free text written by the host (e.g.{' '}
-                  <em>"Στην τιμή δωματίου περιλαμβάνεται πρωινό"</em>, <em>"BB"</em>,{' '}
-                  <em>"Half Board"</em>). Be specific enough not to false-match — e.g.{' '}
-                  <code>BB</code> alone might be too short.
+                  One entry per line. Substring matching is case-insensitive. Be specific enough
+                  not to false-match — e.g. <code>BB</code> alone might be too short if other
+                  meal_plan strings happen to contain those letters.
                 </p>
               </div>
             </div>

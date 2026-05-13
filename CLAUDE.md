@@ -1,7 +1,7 @@
 # Horizon — Context for Claude
 
 ## What This App Does
-Breakfast entitlement validator. Syncs hotel bookings from HostHub, WebHotelier, and RoomRack APIs into Supabase. GonnaOrder calls our validation endpoint to check if breakfast is included for a specific booking.
+Breakfast entitlement validator. Syncs hotel bookings from HostHub, WebHotelier, RoomRack, and Hotelizer APIs into Supabase. GonnaOrder calls our validation endpoint to check if breakfast is included for a specific booking.
 
 ## Stack
 - Frontend: React + Vite
