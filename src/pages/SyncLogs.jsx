@@ -7,7 +7,7 @@ const STATUS_COLOR = {
   running: 'log-running',
 }
 
-const PROVIDER_LABEL = { hosthub: 'HostHub', webhotelier: 'WebHotelier', roomrack: 'RoomRack' }
+const PROVIDER_LABEL = { hosthub: 'HostHub', webhotelier: 'WebHotelier', roomrack: 'RoomRack', hotelizer: 'Hotelizer' }
 
 export default function SyncLogs() {
   const [logs, setLogs]         = useState([])
@@ -86,7 +86,7 @@ export default function SyncLogs() {
       <div className="page-header">
         <div>
           <h1 className="page-title">Sync Logs</h1>
-          <p className="page-subtitle">History of all sync calls to HostHub and WebHotelier</p>
+          <p className="page-subtitle">History of all sync calls across booking platforms</p>
         </div>
         <button className="btn btn-ghost" onClick={fetchLogs}>↻ Refresh</button>
       </div>
@@ -138,6 +138,7 @@ export default function SyncLogs() {
           <option value="hosthub">HostHub</option>
           <option value="webhotelier">WebHotelier</option>
           <option value="roomrack">RoomRack</option>
+          <option value="hotelizer">Hotelizer</option>
         </select>
         <select className="filter-select" value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
           <option value="">All statuses</option>
@@ -208,44 +209,19 @@ export default function SyncLogs() {
                   </div>
                 )}
 
-                <button
-                  className="log-error-toggle"
-                  onClick={() => setExpanded(expanded === log.id ? null : log.id)}
-                >
-                  {expanded === log.id ? 'Hide details ▲' : 'View details ▼'}
-                </button>
+                {log.error_message && (
+                  <button
+                    className="log-error-toggle"
+                    onClick={() => setExpanded(expanded === log.id ? null : log.id)}
+                  >
+                    {expanded === log.id ? 'Hide error ▲' : 'Show error ▼'}
+                  </button>
+                )}
               </div>
 
-              {expanded === log.id && (
-                <div className="log-error-body" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                  <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 13, color: '#475569' }}>
-                    <span><strong>Started:</strong> {log.started_at ? new Date(log.started_at).toLocaleString() : '—'}</span>
-                    <span><strong>Completed:</strong> {log.completed_at ? new Date(log.completed_at).toLocaleString() : '—'}</span>
-                    <span><strong>Duration:</strong> {duration(log)}</span>
-                    <span><strong>Run ID:</strong> <code className="code-chip">{log.id.slice(0, 8)}</code></span>
-                  </div>
-                  {log.error_message && (
-                    <div>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '.04em' }}>Error</div>
-                      <pre className="log-error-pre">{log.error_message}</pre>
-                    </div>
-                  )}
-                  {log.raw_response ? (
-                    <div>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '.04em' }}>API response summary</div>
-                      <pre style={{
-                        background: '#0f172a', color: '#e2e8f0', padding: 10, borderRadius: 6,
-                        fontSize: 12, lineHeight: 1.45, overflow: 'auto', maxHeight: 360, margin: 0,
-                        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-                      }}>
-                        {JSON.stringify(log.raw_response, null, 2)}
-                      </pre>
-                    </div>
-                  ) : (
-                    <div style={{ fontSize: 13, color: '#94a3b8', fontStyle: 'italic' }}>
-                      No raw response captured for this run (older sync runs predate the capture feature).
-                    </div>
-                  )}
+              {expanded === log.id && log.error_message && (
+                <div className="log-error-body">
+                  <pre className="log-error-pre">{log.error_message}</pre>
                 </div>
               )}
             </div>

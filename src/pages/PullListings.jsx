@@ -73,8 +73,8 @@ export default function PullListings() {
   async function addRoom(store, listing) {
     const key = `${store.id}:${listing.platform_id}`
     setActionLoading(a => ({ ...a, [key]: true }))
-    // WebHotelier and RoomRack are hotel PMS — HostHub is short-term rental.
-    const isHotelPms = listing.platform === 'webhotelier' || listing.platform === 'roomrack'
+    // WebHotelier, RoomRack, and Hotelizer are hotel PMSes — HostHub is short-term rental.
+    const isHotelPms = listing.platform === 'webhotelier' || listing.platform === 'roomrack' || listing.platform === 'hotelizer'
     const { error } = await supabase.from('rooms').insert({
       name:         listing.name,
       room_type:    isHotelPms ? 'hotel' : 'airbnb',
@@ -219,8 +219,8 @@ export default function PullListings() {
         .filter(l => !roomByPlatformId[l.platform_id])
         .map(l => ({
           name:         l.name,
-          // WebHotelier and RoomRack are hotel PMS — HostHub is short-term rental.
-          room_type:    (l.platform === 'webhotelier' || l.platform === 'roomrack') ? 'hotel' : 'airbnb',
+          // WebHotelier, RoomRack, and Hotelizer are hotel PMSes — HostHub is short-term rental.
+          room_type:    (l.platform === 'webhotelier' || l.platform === 'roomrack' || l.platform === 'hotelizer') ? 'hotel' : 'airbnb',
           platform_id:  l.platform_id,
           platform:     l.platform,
           store_id:     store.id,
@@ -288,9 +288,10 @@ export default function PullListings() {
                 <div className="pull-store-header">
                   <div className="pull-store-identity">
                     <span className="pull-store-name">{store.name}</span>
-                    <span className={`badge ${store.platform === 'webhotelier' || store.platform === 'roomrack' ? 'badge-info' : 'badge-neutral'}`} style={{ marginLeft: '0.5rem', fontSize: '0.7rem' }}>
+                    <span className={`badge ${store.platform === 'webhotelier' || store.platform === 'roomrack' || store.platform === 'hotelizer' ? 'badge-info' : 'badge-neutral'}`} style={{ marginLeft: '0.5rem', fontSize: '0.7rem' }}>
                       {store.platform === 'webhotelier' ? 'WebHotelier'
                         : store.platform === 'roomrack' ? 'RoomRack'
+                        : store.platform === 'hotelizer' ? 'Hotelizer'
                         : 'HostHub'}
                     </span>
                     {store.accommodation_company && (
