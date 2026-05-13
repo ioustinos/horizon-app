@@ -226,7 +226,7 @@ const innerHandler = async (event) => {
       requested: breakfastQty,
       already_validated: alreadyValidated,
       remaining: Math.max(0, entitled - alreadyValidated),
-      message: `${breakfastQty} breakfast(s) requested, but only ${entitled - alreadyValidated} remaining (${alreadyValidated} already validated, ${entitled} entitled).`,
+      message: `Your room includes ${entitled} breakfasts.\nYou have selected ${breakfastQty}, which is more than your included allowance.\nPlease select up to ${entitled - alreadyValidated} breakfasts.`,
     };
     await saveOrder(goOrderUuid, store.id, room.id, matchedBooking?.id || null, goRoomId, wishDate, breakfastQty, 'rejected', reason, order);
     return ok(result);
