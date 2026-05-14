@@ -21,6 +21,9 @@ const EMPTY_OFFER = {
   vatPercentage: 0,
   externalProductId: '',
   isActive: true,
+  // countAgainstSlot >= 1 → validator treats this offer as a breakfast item.
+  // 0 → normal non-breakfast item (e.g. side, drink, modifier).
+  countAgainstSlot: 0,
 }
 
 const EMPTY_ORDER_ITEM = {
@@ -58,8 +61,11 @@ function newBreakfastItem() {
     offer: {
       ...EMPTY_OFFER,
       name: 'Breakfast',
-      stockLevel: 0,
-      isStockCheckEnabled: true,
+      // The validator (validate-breakfast.js) treats an offer as breakfast
+      // when countAgainstSlot >= 1. stockLevel/isStockCheckEnabled are kept
+      // at the default for payload completeness but are no longer the
+      // detection signal.
+      countAgainstSlot: 1,
     },
   }
 }
@@ -118,7 +124,7 @@ export default function TestWebhook() {
     }
     supabase
       .from('rooms')
-      .select('id, name')
+      .select('id, name, platform_id')
       .eq('store_id', selectedStoreId)
       .order('name')
       .then(({ data }) => setRooms(data || []))
@@ -137,14 +143,19 @@ export default function TestWebhook() {
     }
   }
 
-  // When room selection changes, update locationExternalId with the room's internal ID
+  // When room selection changes, populate locationExternalId with the
+  // value GonnaOrder would actually send — i.e. the room's platform_id
+  // (e.g. "307" for a Hotelizer room) when available, falling back to
+  // the Horizon UUID for max-pax / "Other" rooms that have no platform_id.
+  // The validator format-routes on this value, so both shapes work, but
+  // the test should mirror the production configuration.
   function handleRoomSelect(roomDbId) {
     setSelectedRoomId(roomDbId)
     const room = rooms.find(f => f.id === roomDbId)
     if (room) {
       setOrder(prev => ({
         ...prev,
-        locationExternalId: room.id,
+        locationExternalId: room.platform_id || room.id,
         locationDescription: room.name,
       }))
     }
@@ -223,8 +234,10 @@ export default function TestWebhook() {
     }
   }
 
+  // Mirror the rule in validate-breakfast.js — an offer counts as a
+  // breakfast item when countAgainstSlot >= 1. Only TOP-level items.
   const isBreakfastItem = (item) =>
-    item.offer?.stockLevel === 0 && item.offer?.isStockCheckEnabled === true
+    typeof item.offer?.countAgainstSlot === 'number' && item.offer.countAgainstSlot >= 1
 
   return (
     <div className="page">
@@ -422,12 +435,22 @@ export default function TestWebhook() {
                 {/* Offer sub-fields */}
                 <details style={{ marginTop: '0.5rem' }}>
                   <summary style={{ cursor: 'pointer', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                    Offer details (stockLevel, isStockCheckEnabled, ...)
+                    Offer details (countAgainstSlot, stockLevel, ...)
                   </summary>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem', marginTop: '0.5rem' }}>
                     <label className="field">
                       <span className="field-label">offer.name</span>
                       <input value={item.offer.name} onChange={e => updateOffer(idx, 'name', e.target.value)} />
+                    </label>
+                    <label className="field">
+                      <span className="field-label">offer.countAgainstSlot</span>
+                      <input
+                        type="number"
+                        min="0"
+                        value={item.offer.countAgainstSlot ?? 0}
+                        onChange={e => updateOffer(idx, 'countAgainstSlot', parseInt(e.target.value) || 0)}
+                        title="Validator treats this offer as a breakfast item when value >= 1."
+                      />
                     </label>
                     <label className="field">
                       <span className="field-label">offer.stockLevel</span>
