@@ -11,8 +11,28 @@ export default function WebhookLogs() {
   const [loading, setLoading] = useState(true)
   const [filterEndpoint, setFilterEndpoint] = useState('')
   const [filterStatus,   setFilterStatus]   = useState('')
+  const [filterStoreId,  setFilterStoreId]  = useState('')
+  const [stores, setStores]   = useState([])
   const [openRowId, setOpenRowId] = useState(null)
   const [refreshKey, setRefreshKey] = useState(0)
+
+  // Load stores once for the filter dropdown. Only stores with a
+  // gonnaorder_store_id can match webhook payloads.
+  useEffect(() => {
+    supabase
+      .from('stores')
+      .select('id, name, gonnaorder_store_id')
+      .not('gonnaorder_store_id', 'is', null)
+      .order('name', { ascending: true })
+      .then(({ data }) => setStores(data || []))
+  }, [])
+
+  // goStoreId → store name, for the optional Store column.
+  const storeNameById = useMemo(() => {
+    const m = new Map()
+    for (const s of stores) m.set(String(s.gonnaorder_store_id), s.name)
+    return m
+  }, [stores])
 
   useEffect(() => {
     setLoading(true)
@@ -25,8 +45,10 @@ export default function WebhookLogs() {
     if (filterStatus === 'ok')  q = q.gte('response_status', 200).lt('response_status', 300)
     if (filterStatus === '4xx') q = q.gte('response_status', 400).lt('response_status', 500)
     if (filterStatus === '5xx') q = q.gte('response_status', 500)
+    // storeId in the GonnaOrder payload is a number; ->>'storeId' returns text.
+    if (filterStoreId) q = q.eq('request_body->>storeId', filterStoreId)
     q.then(({ data }) => { setRows(data || []); setLoading(false) })
-  }, [filterEndpoint, filterStatus, refreshKey])
+  }, [filterEndpoint, filterStatus, filterStoreId, refreshKey])
 
   const stats = useMemo(() => {
     const total = rows.length
@@ -58,6 +80,15 @@ export default function WebhookLogs() {
           </select>
         </div>
         <div>
+          <label style={{ fontSize: 12, color: '#475569', marginRight: 6 }}>Store</label>
+          <select value={filterStoreId} onChange={e => setFilterStoreId(e.target.value)} style={{ padding: '4px 8px' }}>
+            <option value="">All stores</option>
+            {stores.map(s => (
+              <option key={s.id} value={s.gonnaorder_store_id}>{s.name}</option>
+            ))}
+          </select>
+        </div>
+        <div>
           <label style={{ fontSize: 12, color: '#475569', marginRight: 6 }}>Status</label>
           <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} style={{ padding: '4px 8px' }}>
             <option value="">All statuses</option>
@@ -83,6 +114,7 @@ export default function WebhookLogs() {
                 <th style={{ width: 36 }}></th>
                 <th>When</th>
                 <th>Endpoint</th>
+                <th>Store</th>
                 <th>Status</th>
                 <th>Time</th>
                 <th>External Id</th>
@@ -97,6 +129,8 @@ export default function WebhookLogs() {
                 const respBody = r.response_body || {}
                 const extId = reqBody?.location?.externalId || reqBody?.locationExternalId || null
                 const orderUuid = reqBody?.orderUuid || reqBody?.uuid || null
+                const goStoreId = reqBody?.storeId != null ? String(reqBody.storeId) : null
+                const storeName = goStoreId ? storeNameById.get(goStoreId) : null
                 const valid = respBody?.valid
                 const reason = respBody?.reason
                 const errMsg = respBody?.error
@@ -111,6 +145,13 @@ export default function WebhookLogs() {
                       <td>{isOpen ? '▾' : '▸'}</td>
                       <td><span className="cell-date">{formatTs(r.created_at)}</span></td>
                       <td><code className="code-chip">{r.endpoint}</code></td>
+                      <td>
+                        {storeName
+                          ? storeName
+                          : goStoreId
+                            ? <code className="code-chip" title={`Unmapped storeId ${goStoreId}`}>{goStoreId}</code>
+                            : <span className="muted">—</span>}
+                      </td>
                       <td><span className={`badge ${statusClass}`}>{status ?? '—'}</span></td>
                       <td className="cell-number">{r.duration_ms != null ? `${r.duration_ms} ms` : '—'}</td>
                       <td>{extId ? <code className="code-chip">{extId}</code> : <span className="muted">—</span>}</td>
@@ -124,7 +165,7 @@ export default function WebhookLogs() {
                     </tr>
                     {isOpen && (
                       <tr key={`${r.id}-detail`}>
-                        <td colSpan={8} style={{ background: '#f8fafc', borderTop: '1px solid #e2e8f0' }}>
+                        <td colSpan={9} style={{ background: '#f8fafc', borderTop: '1px solid #e2e8f0' }}>
                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, padding: '12px 8px' }}>
                             <Pane label="Request body" data={reqBody} />
                             <Pane label="Response body" data={respBody} />
