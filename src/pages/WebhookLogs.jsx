@@ -12,7 +12,9 @@ export default function WebhookLogs() {
   const [filterEndpoint, setFilterEndpoint] = useState('')
   const [filterStatus,   setFilterStatus]   = useState('')
   const [filterStoreId,  setFilterStoreId]  = useState('')
+  const [filterRoomId,   setFilterRoomId]   = useState('')
   const [stores, setStores]   = useState([])
+  const [rooms, setRooms]     = useState([])
   const [openRowId, setOpenRowId] = useState(null)
   const [refreshKey, setRefreshKey] = useState(0)
 
@@ -27,12 +29,68 @@ export default function WebhookLogs() {
       .then(({ data }) => setStores(data || []))
   }, [])
 
-  // goStoreId → store name, for the optional Store column.
+  // Load rooms once for the filter dropdown and Room column resolver.
+  useEffect(() => {
+    supabase
+      .from('rooms')
+      .select('id, name, store_id, platform, platform_id')
+      .order('name', { ascending: true })
+      .then(({ data }) => setRooms(data || []))
+  }, [])
+
+  // goStoreId → store name, for the Store column.
   const storeNameById = useMemo(() => {
     const m = new Map()
     for (const s of stores) m.set(String(s.gonnaorder_store_id), s.name)
     return m
   }, [stores])
+
+  // Internal room.id → store_id, for clearing the room filter when store changes.
+  const roomStoreById = useMemo(() => {
+    const m = new Map()
+    for (const r of rooms) m.set(r.id, r.store_id)
+    return m
+  }, [rooms])
+
+  // externalId (lowercased) → room, so each row can show a room name.
+  // For 'other'-platform rooms the externalId is the Horizon UUID;
+  // for all other rooms it's the platform_id (GonnaOrder uppercases this
+  // before sending, so we lowercase for case-insensitive lookup).
+  const roomByExternalId = useMemo(() => {
+    const m = new Map()
+    for (const r of rooms) {
+      if (r.platform === 'other' && r.id) {
+        m.set(String(r.id).toLowerCase(), r)
+      } else if (r.platform_id) {
+        m.set(String(r.platform_id).toLowerCase(), r)
+      }
+    }
+    return m
+  }, [rooms])
+
+  // Rooms scoped to the selected store (if any) for the dropdown.
+  // We only show rooms for stores that have a gonnaorder_store_id since
+  // payloads from other stores never appear in webhook_logs.
+  const goStoreIds = useMemo(
+    () => new Set(stores.map(s => s.id)),
+    [stores]
+  )
+  const selectedStore = useMemo(
+    () => stores.find(s => String(s.gonnaorder_store_id) === filterStoreId) || null,
+    [stores, filterStoreId]
+  )
+  const visibleRooms = useMemo(() => {
+    const base = rooms.filter(r => goStoreIds.has(r.store_id))
+    return selectedStore ? base.filter(r => r.store_id === selectedStore.id) : base
+  }, [rooms, goStoreIds, selectedStore])
+
+  // If the user changes the store filter and the previously-selected
+  // room is not in the new store, clear the room filter.
+  useEffect(() => {
+    if (!filterRoomId) return
+    const roomStore = roomStoreById.get(filterRoomId)
+    if (selectedStore && roomStore !== selectedStore.id) setFilterRoomId('')
+  }, [filterStoreId, filterRoomId, roomStoreById, selectedStore])
 
   useEffect(() => {
     setLoading(true)
@@ -47,8 +105,20 @@ export default function WebhookLogs() {
     if (filterStatus === '5xx') q = q.gte('response_status', 500)
     // storeId in the GonnaOrder payload is a number; ->>'storeId' returns text.
     if (filterStoreId) q = q.eq('request_body->>storeId', filterStoreId)
+    // Room filter: GonnaOrder uppercases platform_id externalIds before sending,
+    // so we match case-insensitively. Skip the filter if rooms haven't loaded
+    // yet (rare race) — otherwise we'd briefly hide all rows.
+    if (filterRoomId && rooms.length) {
+      const room = rooms.find(r => r.id === filterRoomId)
+      if (room) {
+        const target = room.platform === 'other'
+          ? String(room.id || '').toLowerCase()
+          : String(room.platform_id || '').toLowerCase()
+        if (target) q = q.ilike('request_body->location->>externalId', target)
+      }
+    }
     q.then(({ data }) => { setRows(data || []); setLoading(false) })
-  }, [filterEndpoint, filterStatus, filterStoreId, refreshKey])
+  }, [filterEndpoint, filterStatus, filterStoreId, filterRoomId, rooms, refreshKey])
 
   const stats = useMemo(() => {
     const total = rows.length
@@ -89,6 +159,33 @@ export default function WebhookLogs() {
           </select>
         </div>
         <div>
+          <label style={{ fontSize: 12, color: '#475569', marginRight: 6 }}>Room</label>
+          <select
+            value={filterRoomId}
+            onChange={e => setFilterRoomId(e.target.value)}
+            style={{ padding: '4px 8px', maxWidth: 240 }}
+          >
+            <option value="">All rooms</option>
+            {selectedStore ? (
+              visibleRooms.map(r => (
+                <option key={r.id} value={r.id}>{r.name}</option>
+              ))
+            ) : (
+              stores.map(s => {
+                const roomsInStore = visibleRooms.filter(r => r.store_id === s.id)
+                if (!roomsInStore.length) return null
+                return (
+                  <optgroup key={s.id} label={s.name}>
+                    {roomsInStore.map(r => (
+                      <option key={r.id} value={r.id}>{r.name}</option>
+                    ))}
+                  </optgroup>
+                )
+              })
+            )}
+          </select>
+        </div>
+        <div>
           <label style={{ fontSize: 12, color: '#475569', marginRight: 6 }}>Status</label>
           <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} style={{ padding: '4px 8px' }}>
             <option value="">All statuses</option>
@@ -115,6 +212,7 @@ export default function WebhookLogs() {
                 <th>When</th>
                 <th>Endpoint</th>
                 <th>Store</th>
+                <th>Room</th>
                 <th>Status</th>
                 <th>Time</th>
                 <th>External Id</th>
@@ -131,6 +229,8 @@ export default function WebhookLogs() {
                 const orderUuid = reqBody?.orderUuid || reqBody?.uuid || null
                 const goStoreId = reqBody?.storeId != null ? String(reqBody.storeId) : null
                 const storeName = goStoreId ? storeNameById.get(goStoreId) : null
+                const roomMatch = extId ? roomByExternalId.get(String(extId).toLowerCase()) : null
+                const roomName = roomMatch?.name || reqBody?.location?.label || null
                 const valid = respBody?.valid
                 const reason = respBody?.reason
                 const errMsg = respBody?.error
@@ -152,6 +252,11 @@ export default function WebhookLogs() {
                             ? <code className="code-chip" title={`Unmapped storeId ${goStoreId}`}>{goStoreId}</code>
                             : <span className="muted">—</span>}
                       </td>
+                      <td>
+                        {roomName
+                          ? <span title={roomMatch ? `Room id ${roomMatch.id.slice(0, 8)}` : 'From payload location.label'}>{roomName}</span>
+                          : <span className="muted">—</span>}
+                      </td>
                       <td><span className={`badge ${statusClass}`}>{status ?? '—'}</span></td>
                       <td className="cell-number">{r.duration_ms != null ? `${r.duration_ms} ms` : '—'}</td>
                       <td>{extId ? <code className="code-chip">{extId}</code> : <span className="muted">—</span>}</td>
@@ -165,7 +270,7 @@ export default function WebhookLogs() {
                     </tr>
                     {isOpen && (
                       <tr key={`${r.id}-detail`}>
-                        <td colSpan={9} style={{ background: '#f8fafc', borderTop: '1px solid #e2e8f0' }}>
+                        <td colSpan={10} style={{ background: '#f8fafc', borderTop: '1px solid #e2e8f0' }}>
                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, padding: '12px 8px' }}>
                             <Pane label="Request body" data={reqBody} />
                             <Pane label="Response body" data={respBody} />
