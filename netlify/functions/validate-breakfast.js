@@ -16,10 +16,12 @@
 //   6. Find the room by its internal ID (room mapping ID = rooms.id)
 //   7a. If room platform = "other" → entitled = max_capacity (no bookings needed)
 //   7b. Otherwise → find confirmed bookings with breakfast_included covering the wish date
-//   8. Double-order check: sum already-validated covers for that room+date,
-//      EXCLUDING the current order UUID (so retries/updates are handled correctly)
-//   9. Allow if (already validated + new requested) ≤ entitled guest count
-//  10. Save the order to the orders table
+//   8. Consumed-cover check: sum covers from orders ALREADY CONSUMED for that
+//      room+date — i.e. status 'submitted'/'fulfilled' — EXCLUDING the current
+//      order UUID. Bare 'validated' menu-checks do NOT count (see below).
+//   9. Allow if (already consumed + new requested) ≤ entitled guest count
+//  10. Save this order as 'validated' (tentative). It only becomes a real
+//      consumed slot when the after-order webhook receives ORDER_SUBMITTED.
 
 import { createClient } from '@supabase/supabase-js';
 
@@ -189,16 +191,20 @@ const innerHandler = async (event) => {
   }
 
   // ── Double-order check ────────────────────────────────────────────────────
-  // How many covers have already been used today for this room?
-  // Count both 'validated' (pending) and 'fulfilled' (closed) orders.
-  // EXCLUDE the current order UUID so that retries/re-submissions don't
-  // double-count themselves — the upsert will overwrite the previous record.
+  // How many covers have actually been CONSUMED today for this room?
+  // A breakfast is only consumed once the guest places the order — i.e.
+  // GonnaOrder fires ORDER_SUBMITTED (→ status 'submitted'), later
+  // ORDER_CLOSED (→ 'fulfilled'). Bare 'validated' rows are just menu-checks
+  // (the customer browsing their cart) and must NOT count: otherwise an
+  // abandoned cart would permanently hold the slot. Cancelled orders are
+  // released and excluded automatically. EXCLUDE the current order UUID too,
+  // so a re-check of the same order never counts against itself.
   let existingQuery = supabase
     .from('orders')
     .select('covers_requested')
     .eq('room_id', room.id)
     .eq('wish_date', wishDate)
-    .in('status', ['validated', 'fulfilled']);
+    .in('status', ['submitted', 'fulfilled']);
 
   if (goOrderUuid) {
     existingQuery = existingQuery.neq('go_order_uuid', goOrderUuid);
@@ -273,6 +279,27 @@ async function saveOrder(goOrderUuid, storeId, roomId, bookingId, goLocationId, 
   if (!goOrderUuid) return;
 
   try {
+    // The order lifecycle (submitted → fulfilled / cancelled) is owned by the
+    // after-order webhook. Validation only owns the tentative 'validated' /
+    // 'rejected' states. If this order has already progressed past validation,
+    // a (re-)validation must NOT reset its status — that would un-consume a
+    // placed order or un-release a cancelled one. In that case just refresh
+    // the captured covers + payload and leave the lifecycle status intact.
+    const { data: existing } = await supabase
+      .from('orders')
+      .select('id, status')
+      .eq('go_order_uuid', goOrderUuid)
+      .maybeSingle();
+
+    const LIFECYCLE_OWNED = ['submitted', 'fulfilled', 'cancelled'];
+    if (existing && LIFECYCLE_OWNED.includes(existing.status)) {
+      await supabase
+        .from('orders')
+        .update({ covers_requested: coversRequested, raw_payload: rawPayload })
+        .eq('id', existing.id);
+      return;
+    }
+
     await supabase
       .from('orders')
       .upsert({

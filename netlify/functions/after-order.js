@@ -7,23 +7,32 @@
 //   { uuid, eventType, storeId, storeAlias, locale, currency, customer,
 //     wishTime, createdAt, updatedAt, locationLabel, ... }
 //
-// Slot-reservation model: validate-breakfast.js saves each successful order
-// with status = 'validated'. The double-order check in that endpoint counts
-// 'validated' and 'fulfilled' orders against the room's daily entitlement.
-// So a slot is held from validation until the order reaches a terminal
-// state in GonnaOrder. This handler is what writes those terminal states.
+// Consume-on-submit model: validate-breakfast.js saves each menu-check as a
+// tentative 'validated' row, which does NOT count against the room's daily
+// entitlement. A breakfast slot is only CONSUMED when the guest actually
+// places the order — i.e. GonnaOrder fires ORDER_SUBMITTED. This handler is
+// what promotes the order from a tentative check to a real consumed slot,
+// and releases it on cancellation. The double-order check in
+// validate-breakfast counts only 'submitted' + 'fulfilled' orders.
+//
+// We match the GonnaOrder order to our row by its order UUID (same UUID is
+// reused from menu-check through submission), so the covers quantity captured
+// at validation time is carried forward — the lightweight after-order payload
+// doesn't include item quantities.
 //
 // Event handling:
+//   ORDER_SUBMITTED  → orders.status = 'submitted'  (consume the slot)
+//   ORDER_RECEIVED   → orders.status = 'submitted'  (backstop if SUBMITTED missed)
+//   ORDER_CLOSED     → orders.status = 'fulfilled'  (still consumed)
+//   ORDER_COMPLETED  → orders.status = 'fulfilled'  (forward-compat alias)
 //   ORDER_CANCELLED  → orders.status = 'cancelled'  (release the slot)
 //   ORDER_REJECTED   → orders.status = 'cancelled'  (release the slot)
-//   ORDER_CLOSED     → orders.status = 'fulfilled'  (slot remains counted)
-//   ORDER_COMPLETED  → orders.status = 'fulfilled'  (forward-compat alias)
-//   everything else  → no-op ack (slot stays reserved while order is live)
+//   everything else  → no-op ack (e.g. ORDER_UPDATED while building the cart)
 //
 // Latest-event-wins: GonnaOrder may reverse a cancellation (e.g. a store
-// reinstates the order); we trust whatever event arrives last. The validator
-// only inspects status at validation time, so any after-the-fact state
-// changes don't grant extra slots — they only update reporting.
+// reinstates the order); we trust whatever event arrives last. 'submitted'
+// and 'fulfilled' both count, so out-of-order delivery between them never
+// changes the entitlement math.
 //
 // Idempotent: re-running the same event over the same order is safe.
 // Order-not-found: ack with 200 + action: 'skipped' (most GonnaOrder
@@ -36,13 +45,16 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_KEY
 );
 
-// GonnaOrder eventType → orders.status. Anything not in this map is
-// treated as a non-terminal progress signal and ignored.
+// GonnaOrder eventType → orders.status. Anything not in this map (e.g.
+// ORDER_UPDATED, ORDER_ITEM_UPDATED) is a cart-building progress signal and
+// is acknowledged but ignored.
 const EVENT_TO_STATUS = {
-  ORDER_CANCELLED: 'cancelled',
-  ORDER_REJECTED:  'cancelled',
-  ORDER_CLOSED:    'fulfilled',
+  ORDER_SUBMITTED: 'submitted',   // guest placed the order → consume the slot
+  ORDER_RECEIVED:  'submitted',   // backstop if ORDER_SUBMITTED is ever missed
+  ORDER_CLOSED:    'fulfilled',   // order completed → still consumed
   ORDER_COMPLETED: 'fulfilled',
+  ORDER_CANCELLED: 'cancelled',   // released — frees the slot
+  ORDER_REJECTED:  'cancelled',
 };
 
 const innerHandler = async (event) => {
@@ -68,14 +80,14 @@ const innerHandler = async (event) => {
   if (!orderUuid) return error(400, 'Missing uuid in payload');
   if (!eventType) return error(400, 'Missing eventType in payload');
 
-  // ── Non-terminal events: ack and move on ──────────────────────────────────
+  // ── Cart-building / non-actionable events: ack and move on ────────────────
   const newStatus = EVENT_TO_STATUS[eventType];
   if (!newStatus) {
     return ok({
       acknowledged: true,
       action: 'ignored',
       eventType,
-      message: `Event type "${eventType}" is not a terminal state — slot remains reserved.`,
+      message: `Event type "${eventType}" does not change consumption — no status change.`,
     });
   }
 
