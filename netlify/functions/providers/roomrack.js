@@ -87,7 +87,7 @@ export async function syncRoomRack(room, { lookbackDays, forwardDays }) {
 
     // The API may return a bare array OR an object wrapping the array.
     let reservations = Array.isArray(data) ? data
-      : (data?.reservations || data?.data?.reservations || data?.data || []);
+      : (data?.Data || data?.reservations || data?.data?.reservations || data?.data || []);
     if (!Array.isArray(reservations)) reservations = [];
 
     // Belt-and-braces: we already pass RoomNumber, but defend against the
@@ -158,13 +158,13 @@ export async function fetchRoomRackListings(store) {
 
   const data = await res.json();
   const rooms = Array.isArray(data) ? data
-    : (data?.rooms || data?.data?.rooms || data?.data || []);
+    : (data?.Data || data?.rooms || data?.data?.rooms || data?.data || []);
 
   const listings = (Array.isArray(rooms) ? rooms : []).map(r => ({
-    // We use room_number as the platform_id because that's what filters
-    // GetReservations server-side and identifies the unit operationally.
-    platform_id: String(r.room_number ?? r.room_id ?? ''),
-    name:        r.room_category_name || r.name || `Room ${r.room_number ?? r.room_id ?? ''}`,
+    // platform_id = room_name (e.g. "301"); room_id is RoomRack's internal id.
+    // GetReservations matches reservations on room_number == room_name.
+    platform_id: String(r.room_name ?? r.room_number ?? r.room_id ?? ''),
+    name:        r.room_type_name || r.room_category_name || r.name || `Room ${r.room_name ?? r.room_number ?? r.room_id ?? ''}`,
     capacity:    r.max_persons ?? r.capacity ?? null,
     platform:    'roomrack',
   })).filter(l => l.platform_id);

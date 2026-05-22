@@ -120,14 +120,14 @@ export const handler = async (event) => {
 function extractRoomsSummary(roomsResp) {
   if (!roomsResp || !roomsResp.ok) return { error: 'rooms call failed or skipped' };
   const data = roomsResp.data;
-  const list = Array.isArray(data) ? data : (data?.rooms || data?.data?.rooms || data?.data || []);
+  const list = Array.isArray(data) ? data : (data?.Data || data?.rooms || data?.data?.rooms || data?.data || []);
   return {
     count: Array.isArray(list) ? list.length : 0,
     sample_keys_first_row: list?.[0] ? Object.keys(list[0]).sort() : null,
     rows: (list || []).slice(0, 10).map(r => ({
-      room_number: r.room_number ?? r.RoomNumber ?? null,
+      room_number: r.room_name ?? r.room_number ?? r.RoomNumber ?? null,
       room_id: r.room_id ?? r.RoomId ?? null,
-      category_name: r.room_category_name ?? r.category_name ?? null,
+      category_name: r.room_type_name ?? r.room_category_name ?? r.category_name ?? null,
       max_persons: r.max_persons ?? r.MaxPersons ?? r.capacity ?? null,
       raw_keys: Object.keys(r),
     })),
@@ -137,7 +137,7 @@ function extractRoomsSummary(roomsResp) {
 function extractReservationsSummary(resResp) {
   if (!resResp || !resResp.ok) return { error: 'reservations call failed or skipped' };
   const data = resResp.data;
-  const list = Array.isArray(data) ? data : (data?.reservations || data?.data?.reservations || data?.data || []);
+  const list = Array.isArray(data) ? data : (data?.Data || data?.reservations || data?.data?.reservations || data?.data || []);
   if (!Array.isArray(list) || !list.length) {
     return { count: 0, note: 'No reservations returned in the queried window.' };
   }
