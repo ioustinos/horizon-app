@@ -67,7 +67,7 @@ git push origin main                  # auto-deploys via Netlify
 │   ├── sync-bookings.js        # Cron entry + dispatcher → providers/*.js
 │   ├── force-sync.js           # Manual per-room sync trigger (re-uses syncRoom)
 │   ├── fetch-listings.js       # Listings entry + dispatcher → providers/*.js
-│   ├── order-webhook.js        # GonnaOrder lifecycle webhook
+│   ├── after-order.js          # GonnaOrder lifecycle webhook
 │   ├── test-hosthub.js         # Diagnostic: test HostHub API auth
 │   └── providers/              # One file per booking platform
 │       ├── _shared.js          # supabase + upsertBookings/log helpers
