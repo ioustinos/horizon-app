@@ -67,13 +67,15 @@ git push origin main                  # auto-deploys via Netlify
 │   ├── sync-bookings.js        # Cron entry + dispatcher → providers/*.js
 │   ├── force-sync.js           # Manual per-room sync trigger (re-uses syncRoom)
 │   ├── fetch-listings.js       # Listings entry + dispatcher → providers/*.js
-│   ├── after-order.js          # GonnaOrder lifecycle webhook
+│   ├── after-order.js          # GonnaOrder lifecycle webhook (consume on ORDER_SUBMITTED)
+│   ├── hit-webhook.js          # HIT DataExchange push receiver (capture-only scaffold)
 │   ├── test-hosthub.js         # Diagnostic: test HostHub API auth
 │   └── providers/              # One file per booking platform
 │       ├── _shared.js          # supabase + upsertBookings/log helpers
 │       ├── hosthub.js          # HostHub sync + listings
 │       ├── webhotelier.js      # WebHotelier sync + listings
-│       └── roomrack.js         # RoomRack sync + listings
+│       ├── roomrack.js         # RoomRack sync + listings
+│       └── hotelizer.js        # Hotelizer sync + listings
 ├── src/
 │   ├── pages/
 │   │   ├── Rooms.jsx           # Room management (was Facilities)
@@ -124,12 +126,27 @@ git push origin main                  # auto-deploys via Netlify
 - Breakfast detection: read directly from each reservation's `board` field (BB/HB/FB/AI prefixes → true; RO/OB → false; Greek/English keyword fallback for free-text). No per-store config needed.
 - 190-day max range per call (our 30+90 default is well under).
 - Status mapping: `Cancelled` and `No-Show` → `cancelled`; everything else → `confirmed`.
+- Response envelope: GetAllRooms/GetReservations wrap rows in a `Data` array (capital D). Listings `platform_id` comes from `room_name` (the operational room number); reservations match on `room_number`. (Fixed 2026-05-22, commit e3042a5 — see Changelog.)
+- Activation: each property issues its own ApiToken (RoomRack PMS → Setup → Device Interface); RoomRack quoted €150 one-off per property.
 
-### GonnaOrder Validation
-- Endpoint: POST /api/validate-breakfast
-- Checks for breakfast items (offer.stockLevel === 0 && offer.isStockCheckEnabled === true)
-- Looks up room via `locationExternalId` field from GonnaOrder
-- Room matching: format-routed — UUID → `rooms.id`, otherwise → `rooms.platform_id` (lowercased, since GonnaOrder forces uppercase). Per current convention, populate GonnaOrder with the room's `platform_id`.
+### Hotelizer
+- Base URL: https://app.hotelizer.net/api/integrations
+- Auth: HTTP Basic — `api_key_name` (username) + `api_key_secret` (password). Public demo creds: `username` / `pass`.
+- Key endpoints: /rooms (listings), /accommodations (booking sync; range-based `checkin_from`/`checkin_to`)
+- `room.platform_id` = `rooms.name` (physical room number, e.g. "307"); sync fetches the window once per store, caches it, and filters client-side.
+- Breakfast detection: `board_types.code` (BB/HB/FB/AI → true; RR/RO/NB → false; EN/EL free-text fallback).
+- NOTE: the vendor also exposes /guests/grouped, but that is a single-arrival-date guest-registry export (passports/tax data), NOT the booking feed. Use /accommodations.
+
+### GonnaOrder Integration — TWO endpoints (both MUST be configured in GonnaOrder → Settings → Integrations)
+**1. Validation — `POST /api/validate-breakfast`** (called before an order is placed)
+- Identifies breakfast items by `offer.countAgainstSlot >= 1` (top-level orderItems only; modifiers ignored). NOTE: earlier docs said `stockLevel`/`isStockCheckEnabled` — that is outdated; the live code uses `countAgainstSlot`.
+- Looks up the room via `location.externalId`. Room matching is format-routed: UUID → `rooms.id`, else → `rooms.platform_id` (lowercased, since GonnaOrder forces uppercase). Convention: put the room's `platform_id` in GonnaOrder's External Id.
+- Saves a tentative `validated` order row — which does NOT consume a slot.
+
+**2. Order lifecycle — `POST /api/after-order`** (`after-order.js`; called on order status changes)
+- This is what actually CONSUMES a breakfast slot. Decision (2026-05-21, commit bb088cc): consume on **ORDER_SUBMITTED**, not at validation time, so abandoned carts / menu-checks don't hold slots.
+- Maps GonnaOrder events → `orders.status`: ORDER_SUBMITTED/RECEIVED → `submitted` (consume); ORDER_CLOSED/COMPLETED → `fulfilled`; ORDER_CANCELLED/REJECTED → `cancelled` (release). Idempotent, latest-event-wins.
+- The double-order check in `validate-breakfast` counts only `submitted` + `fulfilled`. **If the after-order endpoint is not wired in GonnaOrder, slots are never consumed and repeat-order protection is inert.**
 
 ## Supabase
 - Project: horizon (project ID: gdreamjjadijdfoeymok)
@@ -148,3 +165,11 @@ git push origin main                  # auto-deploys via Netlify
 - "Platform ID" = the property/room ID from the booking platform (HostHub rental ID, WebHotelier room code, or RoomRack room number) — previously called "External ID"
 - "Room ID" = our internal Horizon UUID — internal reference only
 - **GonnaOrder mapping:** the room's `platform_id` is the canonical value to put in GonnaOrder's location External ID. The validator also accepts the Horizon UUID as a fallback (see `validate-breakfast.js` format-routing).
+
+## Changelog / Decisions
+Record every non-trivial change or decision here (and, if it came from or affects a skill, in that skill file too). Newest first.
+
+- **2026-05-22 — HIT/Protel (push-based, hybrid).** Capture-only webhook receiver added at `/api/hit-webhook` (`hit-webhook.js`, commit fa4d8f6): logs full headers+body to `webhook_logs`, ACKs, no entity parsing yet. Per the HIT DataExchange spec (v1.0.2 **Draft**, 1 Mar 2024) our receiving URL must use SSL + require auth (Basic OR Token — our choice); to call HIT (pull Hotels, send ACK) we use a Bearer token from `api/identity/token` plus an HIT-issued ApplicationId. Architecture is hybrid: reservations pushed, config (Hotels) pulled. Full parser deferred until HIT activates us / first real payloads land. Spec PDF kept at `HIT-DataExchange-API-2026.pdf`. Blocked on HIT to issue credentials + push.
+- **2026-05-22 — Hotelizer verified end-to-end.** Uses `/accommodations` (range booking feed), NOT `/guests/grouped`. See Hotelizer section.
+- **2026-05-22 — RoomRack provider fix (commit e3042a5).** Unwrap the `Data` envelope; listings `platform_id` from `room_name` (not `room_number`/`room_id`). Verified end-to-end against the demo token.
+- **2026-05-21 — Consume on ORDER_SUBMITTED (commit bb088cc).** Breakfast slots are consumed by `after-order.js` on ORDER_SUBMITTED, not at validation. Also fixed the `orders.status` CHECK to allow `submitted` and backfilled history. (CLAUDE.md previously mislabeled the file `order-webhook.js`; real name is `after-order.js`.)

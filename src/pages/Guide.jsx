@@ -552,28 +552,51 @@ export default function Guide() {
         <p className="h2-sub">This is what makes it actually work end-to-end.</p>
 
         <p>
-          GonnaOrder calls Horizon every time a customer is about to place an order, and Horizon
-          decides yes / no.
+          You must wire up <strong>two</strong> GonnaOrder integrations here, and{' '}
+          <strong>both are required</strong>:
         </p>
+        <ul>
+          <li>
+            <strong>1 · Validation</strong> (before the order): GonnaOrder asks Horizon whether
+            breakfast is covered, and Horizon replies yes / no.
+          </li>
+          <li>
+            <strong>2 · Order lifecycle</strong> (after the order): GonnaOrder tells Horizon when an
+            order is actually <em>submitted</em>, closed, or cancelled. This is what{' '}
+            <strong>consumes</strong> a breakfast slot, so a guest can't keep claiming free
+            breakfasts across separate orders and abandoned carts don't hold a slot.{' '}
+            <strong>Skip this one and the allowance is never used up.</strong>
+          </li>
+        </ul>
 
         <Step n={1}>In GonnaOrder admin, open <strong>Settings → Integrations</strong>.</Step>
-        <Step n={2}>Add a new webhook with:
+        <Step n={2}>Add the <strong>validation</strong> webhook:
           <ul>
             <li><strong>URL:</strong></li>
           </ul>
           <pre><code>https://horizon-app-is.netlify.app/api/validate-breakfast</code></pre>
           <ul>
-            <li><strong>Method:</strong> POST</li>
+            <li><strong>Method:</strong> POST &middot; <strong>Content-Type:</strong> application/json</li>
             <li><strong>Trigger:</strong> "Before order is placed" (the exact label varies by GonnaOrder version)</li>
-            <li><strong>Content-Type:</strong> application/json</li>
           </ul>
         </Step>
-        <Step n={3}>Save and test by placing a real order in the store.</Step>
+        <Step n={3}>Add the <strong>order-lifecycle</strong> webhook (the one that's easy to forget):
+          <ul>
+            <li><strong>URL:</strong></li>
+          </ul>
+          <pre><code>https://horizon-app-is.netlify.app/api/after-order</code></pre>
+          <ul>
+            <li><strong>Method:</strong> POST &middot; <strong>Content-Type:</strong> application/json</li>
+            <li><strong>Trigger:</strong> order events: submitted / closed / cancelled (the "after order" or "order status changed" events; label varies by GonnaOrder version)</li>
+          </ul>
+        </Step>
+        <Step n={4}>Save and test by placing a real order in the store.</Step>
 
         <div className="callout tip">
-          <strong>Confirming the webhook fires:</strong> after a test order, look in Webhook Logs
-          (see step 7). You should see one row per order attempt, with the request payload and the
-          response Horizon returned.
+          <strong>Confirming both fire:</strong> after a test order, look in Webhook Logs (see step 7).
+          You should see a <code>/api/validate-breakfast</code> row as the order is placed, and a{' '}
+          <code>/api/after-order</code> row once it's submitted. If only the first appears, the
+          order-lifecycle webhook isn't wired and breakfast slots will never be consumed.
         </div>
       </section>
 
