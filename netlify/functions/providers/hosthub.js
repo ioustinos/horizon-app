@@ -55,10 +55,6 @@ export async function syncHostHub(room, { lookbackDays }) {
       booking_events: events.length,
       response_object: data?.object,
       sample_first_event: events[0] || null,
-      // Full list of booking events that this sync processed. Useful when
-      // debugging why a particular booking did/didn't get attributed to a
-      // store or didn't get marked breakfast-included.
-      all_events: events,
     };
 
     // Breakfast detection has two knobs on the linked store:

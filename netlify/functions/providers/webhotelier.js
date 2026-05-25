@@ -83,10 +83,6 @@ export async function syncWebHotelier(room, { lookbackDays, forwardDays }) {
       total_in_response: allBookings.length,
       filtered_for_this_room: bookings.length,
       sample_first_booking: bookings[0] || allBookings[0] || null,
-      // Full list of bookings that survived the room-type filter and were
-      // processed by this sync. Useful for debugging filter mismatches and
-      // breakfast detection.
-      all_bookings: bookings,
     };
 
     const stats = await upsertBookings(room, 'webhotelier', bookings, (b) => {

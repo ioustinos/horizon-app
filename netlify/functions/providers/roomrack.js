@@ -104,9 +104,6 @@ export async function syncRoomRack(room, { lookbackDays, forwardDays }) {
       total_reservations_in_response: Array.isArray(data) ? data.length : (data?.reservations?.length || 0),
       filtered_for_this_room: reservations.length,
       sample_first_reservation: reservations[0] || null,
-      // Full list of reservations after room filtering. Useful when debugging
-      // why a particular reservation did/didn't sync.
-      all_reservations: reservations,
     };
 
     const stats = await upsertBookings(room, 'roomrack', reservations, (b) => {

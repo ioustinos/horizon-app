@@ -99,6 +99,24 @@ export async function startLog(room_id, provider) {
   return data?.id;
 }
 
+// Hard cap on what we persist into sync_logs.raw_response. The column is a
+// small debug summary, never a place for full API payloads. A runaway
+// full-response capture once grew this table to ~14 GB and triggered Supabase
+// disk auto-scaling, so we truncate defensively here regardless of caller.
+const RAW_RESPONSE_MAX_CHARS = 8000;
+function capRawResponse(raw_response) {
+  if (raw_response == null) return null;
+  try {
+    const json = JSON.stringify(raw_response);
+    if (json && json.length > RAW_RESPONSE_MAX_CHARS) {
+      return { truncated: true, original_chars: json.length, preview: json.slice(0, RAW_RESPONSE_MAX_CHARS) };
+    }
+    return raw_response;
+  } catch {
+    return { truncated: true, note: 'raw_response not serializable' };
+  }
+}
+
 export async function endLog(logId, status, stats = {}, error_message = null, raw_response = null) {
   if (!logId) return;
   await supabase.from('sync_logs').update({
@@ -109,7 +127,7 @@ export async function endLog(logId, status, stats = {}, error_message = null, ra
     bookings_updated:  stats.updated  || 0,
     bookings_deleted:  stats.deleted  || 0,
     error_message,
-    raw_response,
+    raw_response:      capRawResponse(raw_response),
   }).eq('id', logId);
 }
 
