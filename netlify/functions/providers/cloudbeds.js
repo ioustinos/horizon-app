@@ -239,42 +239,87 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 // may need adjustment once we see a real `getReservationsWithRateDetails`
 // payload in the sandbox.
 function transformReservation(r, roomPlatformId, breakfastAllowlist) {
-  // External ID — prefer reservationID, fall back to alternative names seen
-  // in different endpoint versions.
+  // Real Cloudbeds getReservationsWithRateDetails response shape, verified
+  // against the sandbox on 2026-06-02:
+  //   reservation = {
+  //     reservationID, reservationCheckIn, reservationCheckOut, status,
+  //     guestID, guestName, propertyID, mealPlans (top-level string),
+  //     rooms: [
+  //       { roomID, roomName, roomTypeID, roomTypeName, rateID, rateName,
+  //         ratePlanNamePrivate, ratePlanNamePublic, adults (string),
+  //         children (string), roomCheckIn, roomCheckOut, roomStatus, ... }
+  //     ]
+  //   }
+  // Field names that bit our first scaffold (kept as fallbacks for future
+  // endpoint variants): r.checkIn / r.checkOut / r.adults / r.children /
+  // ourRoom.ratePlanName.
   const external_id = String(r.reservationID ?? r.reservationId ?? r.id ?? '');
 
-  // Stay window.
-  const check_in  = toIsoDate(r.checkIn ?? r.startDate);
-  const check_out = toIsoDate(r.checkOut ?? r.endDate);
+  // Find the room assignment that matches our physical room (Horizon's
+  // platform_id = Cloudbeds roomName like "DK(8)").
+  const assignedRooms = extractAssignedRooms(r);
+  const ourRoom = assignedRooms.find(a => sameRoom(a, roomPlatformId)) || assignedRooms[0] || {};
 
-  // Guest count.
-  const adults   = parseInt(r.adults   ?? 0, 10);
-  const children = parseInt(r.children ?? 0, 10);
+  // Stay window — prefer per-room dates (can differ from reservation-level
+  // when a long booking is split across rooms with staggered nights).
+  const check_in  = toIsoDate(ourRoom.roomCheckIn  ?? r.reservationCheckIn  ?? r.checkIn  ?? r.startDate);
+  const check_out = toIsoDate(ourRoom.roomCheckOut ?? r.reservationCheckOut ?? r.checkOut ?? r.endDate);
+
+  // Guest count — per-room on Cloudbeds. Values come back as strings ("1",
+  // "0"), hence parseInt. One Horizon room maps to one Cloudbeds physical
+  // room, so we use the matched room's counts only.
+  const adults   = parseInt(ourRoom.adults   ?? r.adults   ?? 0, 10);
+  const children = parseInt(ourRoom.children ?? r.children ?? 0, 10);
   const guests   = (adults + children) || 1;
 
-  // Status mapping.
+  // Status mapping. Cloudbeds top-level `status` values seen: confirmed,
+  // checked_in, checked_out, cancelled, no_show, not_confirmed.
   const rawStatus = String(r.status ?? '').toLowerCase();
   const status = (rawStatus === 'cancelled' || rawStatus === 'canceled' || rawStatus === 'no_show' || rawStatus === 'noshow')
     ? 'cancelled'
     : 'confirmed';
 
-  // Rate plan(s) on this reservation. `getReservationsWithRateDetails`
-  // typically returns a `rooms` array with per-room `ratePlanName` /
-  // `ratePlanID` per night. We check the rate plan name for breakfast
-  // markers; if ANY assigned room for this reservation matches our room,
-  // we use that room's rate plan.
-  const assignedRooms = extractAssignedRooms(r);
+  // Rate-plan name candidates on the matched room. Public > private > rateName
+  // is the right precedence — `rateName` is often the internal short label
+  // (e.g. "Deluxe King"), `ratePlanNamePublic` is what the guest sees
+  // (e.g. "Bed & Breakfast"). Both can be null in the sandbox; we keep
+  // ratePlanName as a defensive fallback for any endpoint variant that
+  // exposes a top-level field.
+  const ratePlanName = ourRoom.ratePlanNamePublic
+                    ?? ourRoom.ratePlanNamePrivate
+                    ?? ourRoom.rateName
+                    ?? ourRoom.ratePlanName
+                    ?? r.ratePlanName
+                    ?? '';
 
-  // Pick the rate plan name to use — prefer the one matching the requested
-  // physical room; fall back to the first assigned room or the top-level
-  // ratePlanName.
-  const ourRoom = assignedRooms.find(a => sameRoom(a, roomPlatformId)) || assignedRooms[0] || {};
-  const ratePlanName = ourRoom.ratePlanName ?? r.ratePlanName ?? '';
-  const roomCode     = ourRoom.roomName ?? '';
+  const roomCode = ourRoom.roomName ?? '';
 
-  const breakfast =
-    matchesAllowlist(ratePlanName, breakfastAllowlist) ||
-    boardIncludesBreakfast(ratePlanName);
+  // ── Breakfast detection ──────────────────────────────────────────────────
+  // Primary signal (verified on 2026-06-02 against real payload): top-level
+  // `reservation.mealPlans` is a string field that IS persisted on
+  // getReservationsWithRateDetails responses. In the sandbox sample it was
+  // empty because the demo property hasn't been configured with meal plans,
+  // but the field exists and is the documented source of truth.
+  //
+  // We treat any of these keyword matches (case-insensitive substring) as
+  // breakfast included: 'breakfast', 'half board', 'full board',
+  // 'all inclusive', plus the camel/snake-case variants Cloudbeds uses
+  // internally (halfBoard, fullBoard, allInclusive).
+  const mealPlansStr = String(r.mealPlans ?? '').toLowerCase();
+  const MEAL_PLAN_BREAKFAST_KEYWORDS = [
+    'breakfast', 'half board', 'halfboard', 'half_board',
+    'full board', 'fullboard', 'full_board',
+    'all inclusive', 'allinclusive', 'all_inclusive',
+  ];
+  const mealPlansSaysBreakfast = mealPlansStr.length > 0
+    && MEAL_PLAN_BREAKFAST_KEYWORDS.some(kw => mealPlansStr.includes(kw));
+
+  // Secondary signals (existing) — rate-plan name + per-store allowlist.
+  // If mealPlans is empty (likely the common case in this sandbox), fall
+  // back to checking the rate plan name for the same keywords.
+  const breakfast = mealPlansSaysBreakfast
+    || matchesAllowlist(ratePlanName, breakfastAllowlist)
+    || boardIncludesBreakfast(ratePlanName);
 
   return {
     external_id,
