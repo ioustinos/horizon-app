@@ -27,3 +27,7 @@ dist-ssr
 .env
 .env.local
 .env.*.local
+
+# Cloudbeds / vendor sandbox credentials (per-property keys captured locally)
+.cloudbeds-sandbox-credentials.md
+.cloudbeds-*-credentials.md
