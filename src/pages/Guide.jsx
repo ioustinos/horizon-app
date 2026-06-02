@@ -87,7 +87,7 @@ function SystemSchematic() {
         <g>
           <rect x="20" y="60" width="200" height="120" rx="10" fill="#fff" stroke="#94a3b8" strokeWidth="1.5"/>
           <text x="120" y="92" textAnchor="middle" fontFamily="system-ui" fontSize="15" fontWeight="700" fill="#0f172a">Booking platform</text>
-          <text x="120" y="112" textAnchor="middle" fontFamily="system-ui" fontSize="12" fill="#475569">HostHub · WebHotelier · RoomRack · Hotelizer</text>
+          <text x="120" y="112" textAnchor="middle" fontFamily="system-ui" fontSize="12" fill="#475569">HostHub · WebHotelier · RoomRack · Hotelizer · Cloudbeds</text>
           <text x="120" y="142" textAnchor="middle" fontFamily="system-ui" fontSize="12" fill="#64748b">Source of bookings</text>
           <text x="120" y="160" textAnchor="middle" fontFamily="system-ui" fontSize="12" fill="#64748b">+ rental listings</text>
         </g>
@@ -245,7 +245,7 @@ export default function Guide() {
       <h1>How to use Horizon</h1>
       <p className="lede">
         A complete walkthrough — from creating a store to seeing a real GonnaOrder breakfast order
-        validated against a booking from your PMS (HostHub, WebHotelier, RoomRack, or Hotelizer).
+        validated against a booking from your PMS (HostHub, WebHotelier, RoomRack, Hotelizer, or Cloudbeds).
         Read top to bottom the first time; later you can jump in via the table of contents.
       </p>
 
@@ -281,7 +281,7 @@ export default function Guide() {
         <p className="schematic-caption">Horizon is the validator in the middle — connecting bookings to orders.</p>
 
         <ol>
-          <li><strong>The booking platform</strong> (HostHub, WebHotelier, RoomRack, or Hotelizer) tells Horizon who's checked into which room and whether breakfast is included in their booking.</li>
+          <li><strong>The booking platform</strong> (HostHub, WebHotelier, RoomRack, Hotelizer, or Cloudbeds) tells Horizon who's checked into which room and whether breakfast is included in their booking.</li>
           <li><strong>GonnaOrder</strong> is the food-ordering app the guest uses (e.g. by scanning a QR code on the breakfast table).</li>
           <li><strong>Horizon's validator</strong> is called by GonnaOrder right before an order is placed. We check the booking, count how many free breakfasts are left for that room/day, and reply <em>"yes, this is covered"</em> or <em>"no, charge them"</em>.</li>
         </ol>
@@ -292,7 +292,7 @@ export default function Guide() {
 
         <p>
           Each <strong>store</strong> in Horizon represents one GonnaOrder restaurant tied to one
-          booking-platform account (HostHub, WebHotelier, RoomRack, or Hotelizer). Each <strong>room</strong>
+          booking-platform account (HostHub, WebHotelier, RoomRack, Hotelizer, or Cloudbeds). Each <strong>room</strong>
           represents one rental that may have breakfast-included guests staying in it on any given day.
         </p>
       </section>
@@ -313,6 +313,7 @@ export default function Guide() {
               <li><strong>WebHotelier:</strong> API username (also called the <em>property code</em>, e.g. <code>HRZNTEST</code>) and an API password.</li>
               <li><strong>RoomRack:</strong> a per-property <em>ApiToken</em> (UUID-shaped). The client enables it in their RoomRack PMS at <em>Setup → Device Interface → General API / Partners API</em>; the token appears there once activated.</li>
               <li><strong>Hotelizer:</strong> a Basic Auth username + password issued by Hotelizer per property. A public demo property is available with <code>username</code> / <code>pass</code> for testing — see <a href="https://hotelizer.gitbook.io/hotelizer-api/guidelines" target="_blank" rel="noreferrer">the Hotelizer docs</a>.</li>
+              <li><strong>Cloudbeds:</strong> a per-property API key (starts with <code>cbat_</code>). The property generates it in <em>Cloudbeds Marketplace → API Credentials → + New Credentials → Create API Key</em>, then approves the scopes Horizon needs (read: rate, room, hotel, reservation, guest, customFields, package, addon). The key is shown only once — store it carefully. You'll also need the <strong>Cloudbeds Property ID</strong> (numeric, visible in the URL of the property's Cloudbeds admin). See <a href="https://developers.cloudbeds.com/docs/quickstart-guide-api-authentication-for-property-level-users" target="_blank" rel="noreferrer">the Cloudbeds Quickstart Guide</a>.</li>
             </ul>
           </li>
           <li><strong>GonnaOrder Store ID</strong> — the numeric identifier of the GonnaOrder store. You can find it in the GonnaOrder admin URL or in the store settings.</li>
@@ -346,9 +347,9 @@ export default function Guide() {
               <tr><td>Accommodation Company</td><td>Who owns the rooms. Optional but useful when one company runs multiple stores.</td></tr>
               <tr><td><strong>GonnaOrder Store ID *</strong></td><td>The numeric ID GonnaOrder uses (e.g. <code>8829</code>). Find it in the GonnaOrder admin URL.</td></tr>
               <tr><td>Public Order Link</td><td>The link guests use to open this store in GonnaOrder. Optional.</td></tr>
-              <tr><td><strong>Booking Platform *</strong></td><td>HostHub, WebHotelier, RoomRack, Hotelizer, or "Other" (manual rooms with a fixed max capacity, no booking sync).</td></tr>
-              <tr><td>API Key Name <em>/ Username</em></td><td>For HostHub: a label for the key (any text). For WebHotelier: <strong>required</strong> — the property code / username. For Hotelizer: <strong>required</strong> — the Basic Auth username. RoomRack doesn't use this field.</td></tr>
-              <tr><td><strong>API Key Secret *</strong> <em>/ Password / Token</em></td><td>For HostHub: paste the API key the client gave you, exactly as received. For WebHotelier: the API password. For RoomRack: the ApiToken (UUID-shaped). For Hotelizer: the Basic Auth password.</td></tr>
+              <tr><td><strong>Booking Platform *</strong></td><td>HostHub, WebHotelier, RoomRack, Hotelizer, Cloudbeds, or "Other" (manual rooms with a fixed max capacity, no booking sync).</td></tr>
+              <tr><td>API Key Name <em>/ Username / Property ID</em></td><td>For HostHub: a label for the key (any text). For WebHotelier: <strong>required</strong> — the property code / username. For Hotelizer: <strong>required</strong> — the Basic Auth username. For Cloudbeds: <strong>required</strong> — the numeric Cloudbeds <em>propertyID</em> (e.g. <code>320653</code>). RoomRack doesn't use this field.</td></tr>
+              <tr><td><strong>API Key Secret *</strong> <em>/ Password / Token</em></td><td>For HostHub: paste the API key the client gave you, exactly as received. For WebHotelier: the API password. For RoomRack: the ApiToken (UUID-shaped). For Hotelizer: the Basic Auth password. For Cloudbeds: the <code>cbat_…</code> API key issued in the Cloudbeds Marketplace.</td></tr>
             </tbody>
           </table>
         </Step>

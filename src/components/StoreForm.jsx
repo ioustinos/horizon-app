@@ -159,6 +159,7 @@ export default function StoreForm({ store, onClose, onSaved }) {
                 <option value="webhotelier">WebHotelier</option>
                 <option value="roomrack">RoomRack</option>
                 <option value="hotelizer">Hotelizer</option>
+                <option value="cloudbeds">Cloudbeds</option>
                 <option value="other">Other (no booking platform)</option>
               </select>
               <p className="field-hint">
@@ -168,6 +169,8 @@ export default function StoreForm({ store, onClose, onSaved }) {
                   ? 'RoomRack uses a per-property ApiToken (enable it in the PMS at Setup → Device Interface).'
                   : form.platform === 'hotelizer'
                   ? 'Hotelizer uses Basic Auth (username + password). Public demo: username / pass.'
+                  : form.platform === 'cloudbeds'
+                  ? 'Cloudbeds uses a per-property API key (cbat_…). Username = the numeric Cloudbeds propertyID; Password = the API key. Generated in Cloudbeds Marketplace → API Credentials.'
                   : form.platform === 'other'
                   ? 'Rooms will be managed manually — no API sync.'
                   : 'HostHub uses an API key for authentication.'}
@@ -181,6 +184,7 @@ export default function StoreForm({ store, onClose, onSaved }) {
               <label htmlFor="s-key-name">
                 {form.platform === 'webhotelier' ? 'Username / Property Code'
                   : form.platform === 'hotelizer' ? 'Username'
+                  : form.platform === 'cloudbeds' ? 'Cloudbeds Property ID'
                   : 'API Key Name'}
               </label>
               <input
@@ -190,6 +194,7 @@ export default function StoreForm({ store, onClose, onSaved }) {
                 onChange={e => set('api_key_name', e.target.value)}
                 placeholder={form.platform === 'webhotelier' ? 'e.g. HRZNTEST'
                   : form.platform === 'hotelizer' ? 'e.g. username (demo)'
+                  : form.platform === 'cloudbeds' ? 'e.g. 320653'
                   : 'Username / key identifier'}
               />
               {form.platform === 'webhotelier' && (
@@ -198,6 +203,9 @@ export default function StoreForm({ store, onClose, onSaved }) {
               {form.platform === 'hotelizer' && (
                 <p className="field-hint">Issued by Hotelizer per property. Demo: <code>username</code>.</p>
               )}
+              {form.platform === 'cloudbeds' && (
+                <p className="field-hint">The numeric Cloudbeds propertyID — visible in the URL of the property's Cloudbeds admin (e.g. <code>hotels.cloudbeds.com/connect/<strong>320653</strong>/…</code>). Sent as <code>X-PROPERTY-ID</code> on every API call.</p>
+              )}
             </div>
             )}
             <div className="field-group">
@@ -205,6 +213,7 @@ export default function StoreForm({ store, onClose, onSaved }) {
                 {form.platform === 'webhotelier' ? 'API Password'
                   : form.platform === 'roomrack' ? 'ApiToken'
                   : form.platform === 'hotelizer' ? 'Password'
+                  : form.platform === 'cloudbeds' ? 'Cloudbeds API Key (cbat_…)'
                   : 'API Key Secret'}
               </label>
               <input
@@ -215,11 +224,15 @@ export default function StoreForm({ store, onClose, onSaved }) {
                 placeholder={form.platform === 'webhotelier' ? 'API password'
                   : form.platform === 'roomrack' ? 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'
                   : form.platform === 'hotelizer' ? 'e.g. pass (demo)'
+                  : form.platform === 'cloudbeds' ? 'cbat_xxxxxxxxxxxxxxxxxxxx'
                   : 'Password / secret key'}
                 autoComplete="new-password"
               />
               {form.platform === 'roomrack' && (
                 <p className="field-hint">Per-property token from RoomRack PMS → Setup → Device Interface.</p>
+              )}
+              {form.platform === 'cloudbeds' && (
+                <p className="field-hint">Generated in Cloudbeds Marketplace → API Credentials → Create API Key. Starts with <code>cbat_</code>. Shown only once at creation.</p>
               )}
             </div>
           </div>
