@@ -4,7 +4,7 @@
 
 > **Maintenance rule:** every status change (vendor reply, scope flip, payment received, sandbox provisioned, scaffold pushed, blocker found/cleared) gets reflected here, same session. Per the `horizon-add-integration` skill, this file is part of the "always do, every integration" contract.
 
-**Last updated:** 2026-06-02 evening UTC
+**Last updated:** 2026-06-02 evening UTC (added Loggia + Orange PMS)
 
 ---
 
@@ -20,6 +20,8 @@
 | Cloudbeds | n/a (Partner sandbox provisioned 2026-05-29) | 🟡 **ACTION REQUIRED FROM US** | Logging into the Okta-provisioned sandbox, clicking through app setup | **You** (Cloudbeds will auto-close ticket in 5 days from 2026-06-02) |
 | Lodgify | n/a | 🟡 Myrsini replied 2026-05-28; full reply not yet processed | Reading her reply + acting on next step | **You / Me** (someone needs to read it end-to-end) |
 | Guesty | n/a | 🟡 Reply sent today to Karazeris for forwarding | Karazeris forwarding + Guesty integrations reply | Karazeris → Guesty |
+| **Loggia** | ✅ **Demo creds + API key + Postman collection received 2026-05-31** | 🟡 Not yet built | Us — read docs, scaffold provider, hit demo with the issued creds | **Us** (no vendor blocker; this one is ready to build) |
+| **Orange PMS (Marinet)** | n/a | 🟡 API docs URL provided 2026-05-28; vendor said properties should contact them to proceed | Read the docs at https://hotel.orangepms.com/api.html, draft reply (English/Greek) to Aspasia confirming next steps | **Us** (reply to Aspasia) → then property-side coordination |
 | Other (max-pax, no PMS) | n/a | ✅ Live, heavy production use (230 rooms, all GonnaOrder traffic this week landed here) | — | — |
 
 ---
@@ -114,6 +116,34 @@
 - **Next action — Karazeris forwards, then Guesty integrations contact replies.**
 - **Scaffold:** `guesty-scaffold` branch (commit `4488779`) — provider + dispatchers + DB migration, no UI exposure yet. Updated commit (`674e481`) switched breakfast detection to listing-amenity instead of `ratePlan.mealPlans` based on the deep-docs walk earlier today.
 
+### Loggia — ✅ Demo creds received 2026-05-31, ready to build
+
+- Email from Eutychis Vavourakis (`Ευτύχης Βαβουράκης`), 2026-05-31 — forwarded by `info@the-horizon.gr` to `ioustinos@wecook.gr` with subject *"Fw: Πρόσβαση σε Loggia API"*
+- **Demo credentials issued:**
+  - Username: `info@the-horizon.gr`
+  - Password: `2gb0zPOoenVn`
+  - API key: `88TOcJUc0DYF5fLEE25HHnl73PZ7fwxkVE3RWz9BwzjBl5nsS4`
+  - Page id: `4634`
+  - Loggia demo PMS available for testing
+- **Attachment:** `loggia-properties-api.postman.json` — a Postman collection with example API calls. Major time-saver: we don't need to guess at endpoint shapes, paths, or auth headers.
+- **Status:** unblocked from vendor side; entirely on us to build. Per the new skill's deep-docs-walkthrough rule, the next step is to walk the Postman collection (which functions as the authoritative endpoint reference), then scaffold `providers/loggia.js` following the Cloudbeds/Lodgify/Guesty pattern on a `loggia-scaffold` branch.
+- **Earlier mention:** there was a 2026-05-06 thread with `support@loggia.net` (ticket-receipt for request #20789, sent to `dev@webhotelier.net` with hotelizer + horizon CC'd). Appears to be unrelated to this integration request — more likely a WebHotelier-related ticket that happened to CC Loggia support. Worth confirming when we next touch this thread.
+- **Next action — us:** walk the Postman collection + docs, build scaffold, smoke-test the demo creds end-to-end before any real property goes live (per the always-request-demo rule, we already have them — just need to use them).
+
+### Orange PMS (Marinet) — 🟡 API docs URL received 2026-05-28, awaiting our reply
+
+- Thread between Karazeris and Aspasia Polymerou (`apolymerou@marinet.gr`, Head of Tech & Customer Support at Marinet Ltd, Piraeus). Sequence:
+  - **2026-05-27 10:52** — Karazeris emailed Marinet introducing Horizon + asking about API integration with the exact data needs (check-in/out dates, breakfast inclusion, guest count, room number, basic reservation info)
+  - **2026-05-27 11:28** — Aspasia replied: tech team will be informed and will reach back
+  - **2026-05-28 12:25** — Aspasia replied with **API docs URL: `https://hotel.orangepms.com/api.html`** and noted that interested properties should contact Marinet directly to proceed
+  - **2026-05-28 13:01** — Karazeris forwarded the thread to `ioustinos@wecook.gr` for technical follow-up
+- **Status:** API docs link in hand; haven't walked them yet. No demo credentials yet — per the always-request-demo rule, when we reply we explicitly ask for a sandbox.
+- **Reply not yet drafted.** Karazeris is the property contact; we (Horizon, via `ioustinos@wecook.gr`) are the technical contact going forward (Aspasia's reply was forwarded to us specifically).
+- **Next action — us:**
+  1. Walk `https://hotel.orangepms.com/api.html` end-to-end per the skill (grep checklist: auth, getReservations equivalent, listings, breakfast/meal field, rate limits, sandbox)
+  2. Draft reply to Aspasia (English or Greek — TBD; vendor wrote in Greek so probably Greek) with: Horizon overview, endpoints we'll use (cited), breakfast-detection assumption (cited), demo / sandbox credentials request, and confirmation of who owns the technical contact going forward
+  3. Scaffold `providers/orange.js` on a `orange-scaffold` branch following the Cloudbeds/Lodgify/Guesty pattern
+
 ### Other (max-pax, no PMS) — ✅ Heavy production use, no action
 
 - 230 rooms configured with manual max-pax capacity (no PMS integration)
@@ -132,6 +162,9 @@
 | 2026-06-02 | `dev@hotelizer.net` (via Karazeris) | Lasari API scope enable request | ✅ Sent |
 | 2026-06-02 | Lasari property contacts (via Karazeris) | Owner update on the API scope situation | ✅ Sent |
 | 2026-06-02 | Guesty integrations (via Karazeris) | Full Guesty scoping reply | ✅ Sent to Karazeris; awaiting his forward |
+| 2026-05-27 | Aspasia Polymerou (`apolymerou@marinet.gr`) | Orange PMS integration scoping (initial from Karazeris) | ✅ Sent (Karazeris). Aspasia replied 2026-05-28 with docs URL. **Our follow-up reply not yet drafted.** |
+| TBD | Aspasia Polymerou | Orange PMS — Horizon technical reply + sandbox request | 🟡 Pending; draft after walking the docs |
+| 2026-05-31 | (Eutychis Vavourakis / Loggia) | Loggia issued demo creds + Postman collection | ✅ Received. No reply needed yet — we just need to build. |
 
 ---
 
@@ -140,9 +173,12 @@
 - `cloudbeds-scaffold` — commit `980cd52` — unblocks once Cloudbeds sandbox login is done
 - `lodgify-scaffold` — commit `fc1ab26` — unblocks once Myrsini's reply is processed
 - `guesty-scaffold` — commit `4488779` (+ `674e481` for the breakfast-detection fix) — unblocks once Guesty demo creds arrive
+- *(not yet created)* `loggia-scaffold` — to build next; demo creds + Postman collection in hand
+- *(not yet created)* `orange-scaffold` — pending docs walk + reply to Aspasia + sandbox credentials
 
 ---
 
 ## Update log
 
-- **2026-06-02 evening:** File created. RoomRack status corrected (was previously "live healthy" — actually demo is healthy, but Finders Hospitality customer is blocked on €150 activation fee). Cloudbeds status escalated to "action required from us" (Partner sandbox provisioned 2026-05-29, auto-close threat from today's reminder). Lodgify status updated (Myrsini reply received 2026-05-28, full content still to be processed). Hotelizer/Lasari status reflects today's support email send. Guesty status reflects today's reply send.
+- **2026-06-02 evening (initial):** File created. RoomRack status corrected (was previously "live healthy" — actually demo is healthy, but Finders Hospitality customer is blocked on €150 activation fee). Cloudbeds status escalated to "action required from us" (Partner sandbox provisioned 2026-05-29, auto-close threat from today's reminder). Lodgify status updated (Myrsini reply received 2026-05-28, full content still to be processed). Hotelizer/Lasari status reflects today's support email send. Guesty status reflects today's reply send.
+- **2026-06-02 evening (+30m):** Added **Loggia** (Eutychis Vavourakis sent demo creds + API key + Postman collection on 2026-05-31 — ready to build; no vendor blocker, just our turn) and **Orange PMS / Marinet** (Aspasia Polymerou sent API docs URL `https://hotel.orangepms.com/api.html` on 2026-05-28 — we owe a technical reply + sandbox request after walking the docs).
