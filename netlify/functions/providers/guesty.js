@@ -48,14 +48,28 @@
 //   On 429, honor `Retry-After` response header (seconds).
 //
 // ── BREAKFAST DETECTION ─────────────────────────────────────────────────────
-// Guesty exposes meal plan info on the reservation's rate plan:
-//   reservation.ratePlan.mealPlans → array, e.g. ["breakfast"] or
-//                                    ["half_board"], or [] when none.
-// (Documented in the V3 booking flow example.) We treat the presence of
-// "breakfast", "half_board", "full_board" or "all_inclusive" as breakfast
-// included. Falls back to the listing amenity "breakfast" if mealPlans
-// is missing / empty. Last-resort fallback: per-store toggle via
-// stores.meal_plan_breakfast_values ('NEVER' = always exclude).
+// VERIFIED (2026-06-02): `reservation.ratePlan.mealPlans` is NOT returned on
+// the standard GET /v1/reservations response. Three pieces of evidence:
+//   1. "How to Search for Reservations" guide field table doesn't list it.
+//   2. "Reservation Webhooks" page (full payload schema) doesn't mention it.
+//   3. The V3 booking-flow JSON example showing mealPlans is from a QUOTE
+//      response (pre-checkout), not a saved reservation.
+//
+// PRIMARY signal: the listing-level `breakfast` amenity, documented in the
+// Supported Amenities catalog (Kitchen & Dining group, channel-mapped to
+// Booking.com / Expedia / Marriott). We read this at room-mapping time and
+// stamp each Horizon room with whether the linked listing offers breakfast.
+//
+// FALLBACK: per-store override via stores.meal_plan_breakfast_values:
+//   - empty / null → use whatever the listing amenity says
+//   - 'ALWAYS'      → force breakfast=true on every booking
+//   - 'NEVER'       → force breakfast=false on every booking
+//
+// OPEN: per-stay add-ons / additional fees / custom fields aren't checked
+// yet — the docs don't make clear which (if any) of these is the idiomatic
+// place. To be resolved once Guesty integrations contact responds to the
+// scoping email; updating the detector is then localized to
+// `reservationIncludesBreakfast()` below.
 
 import {
   upsertBookings,
@@ -136,6 +150,11 @@ export async function fetchGuestyListings(store) {
       platform_id: String(l._id ?? l.id ?? ''),
       name: l.title || l.nickname || `Listing ${l._id}`,
       capacity: l?.accommodates ?? l?.maxOccupancy ?? null,
+      // Listing-level breakfast amenity baseline. Per the Supported Amenities
+      // catalog, the canonical slug is 'breakfast'. If the listing exposes
+      // amenities as an array of strings, look for that value; if as an
+      // array of objects, look for { name: 'breakfast' } / { slug: 'breakfast' }.
+      breakfast_baseline: listingOffersBreakfast(l),
       platform: 'guesty',
     }))
     .filter(l => l.platform_id);
@@ -162,7 +181,7 @@ async function fetchAllReservations(token, { fromIso, toIso }) {
 
   return fetchAllPaged(token, '/v1/reservations', {
     'filters[]': filterValue,
-    fields: '_id status checkInDateLocal checkOutDateLocal nightsCount guestsCount listingId source money ratePlan ratePlan.mealPlans',
+    fields: '_id status checkInDateLocal checkOutDateLocal nightsCount guestsCount listingId source money',
     sort: '-checkInDateLocal',
   });
 }
@@ -271,10 +290,10 @@ function transformReservation(r, listingId, store) {
   const status = ['canceled', 'cancelled', 'declined', 'expired', 'inquiry']
     .includes(raw) ? 'cancelled' : 'confirmed';
 
-  // Breakfast detection — primary: reservation.ratePlan.mealPlans.
-  // Fallback: per-store toggle via stores.meal_plan_breakfast_values
-  // ('NEVER' = always exclude).
-  const breakfast = ratePlanIncludesBreakfast(r) ?? storeDefaultBreakfast(store);
+  // Breakfast detection — see header. Primary signal is the listing-level
+  // 'breakfast' amenity, stamped into `room.breakfast_baseline` at mapping
+  // time. Per-store overrides flip the default both ways.
+  const breakfast = resolveBreakfast(room, store);
 
   return {
     external_id,
@@ -300,20 +319,39 @@ function toIsoDate(s) {
 }
 
 
-// True if the reservation's rate plan declares an included meal-plan that
-// counts as breakfast. Null if no signal at all (caller should fall back).
-function ratePlanIncludesBreakfast(r) {
-  const mp = r?.ratePlan?.mealPlans;
-  if (!Array.isArray(mp) || mp.length === 0) return null;
-  // Anything that bundles breakfast counts as breakfast included.
-  const INCLUDES = new Set(['breakfast', 'half_board', 'full_board', 'all_inclusive']);
-  return mp.some(v => INCLUDES.has(String(v ?? '').toLowerCase()));
+// Resolve breakfast for a given booking using:
+//   1. Per-store override (stores.meal_plan_breakfast_values 'ALWAYS' / 'NEVER')
+//   2. Listing-level amenity baseline stamped on the room
+//        (room.breakfast_baseline, set by fetchGuestyListings)
+//   3. Conservative default: include breakfast (so we don't accidentally deny
+//      a valid guest because our metadata isn't filled in).
+//
+// The reservation parameter is kept on the signature for future use (per-stay
+// add-on / custom-field detection, once we know where Guesty exposes that).
+function resolveBreakfast(room, store) {
+  const flag = String(store?.meal_plan_breakfast_values ?? '').trim().toUpperCase();
+  if (flag === 'ALWAYS') return true;
+  if (flag === 'NEVER')  return false;
+  if (typeof room?.breakfast_baseline === 'boolean') return room.breakfast_baseline;
+  return true;
 }
 
-// Per-store fallback: default true, 'NEVER' flips to false.
-function storeDefaultBreakfast(store) {
-  const flag = String(store?.meal_plan_breakfast_values ?? '').trim().toUpperCase();
-  return flag !== 'NEVER';
+
+// Inspect a Guesty listing object for the 'breakfast' amenity (Supported
+// Amenities catalog, Kitchen & Dining group). Tolerant of multiple shapes
+// since the field can be returned as strings or objects depending on the
+// query / channel mapping.
+function listingOffersBreakfast(l) {
+  const a = l?.amenities;
+  if (!Array.isArray(a) || a.length === 0) return null;
+  return a.some(item => {
+    if (typeof item === 'string') return item.toLowerCase() === 'breakfast';
+    if (item && typeof item === 'object') {
+      const slug = String(item.slug ?? item.name ?? item.id ?? '').toLowerCase();
+      return slug === 'breakfast';
+    }
+    return false;
+  }) || null;  // false → null so resolveBreakfast falls through to conservative default
 }
 
 void supabase;
