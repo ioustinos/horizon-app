@@ -4,7 +4,7 @@
 
 > **Maintenance rule:** every status change (vendor reply, scope flip, payment received, sandbox provisioned, scaffold pushed, blocker found/cleared) gets reflected here, same session. Per the `horizon-add-integration` skill, this file is part of the "always do, every integration" contract.
 
-**Last updated:** 2026-06-02 22:25 UTC — Cloudbeds verified end-to-end against sandbox, sandbox data cleaned up; infrastructure ready for first real property
+**Last updated:** 2026-06-03 — Lodgify reply processed: Myrsini escalated our questions to product team, awaiting their response
 
 ---
 
@@ -18,7 +18,7 @@
 | Hotelizer | ✅ Demo live (1 room #307, 1,960 syncs/7d, 100% success) | 🟡 **BLOCKED: Lasari Comfort Living awaiting Hotelizer API-scope activation** | Hotelizer support flipping `/api/integrations/*` scope for `LASARI` account | Hotelizer support (~1 business day) |
 | HIT / Protel | n/a (push model, no demo) | 🟡 Receiver live + authed, awaiting vendor commercial OK + push activation | HIT commercial OK | HIT (unknown timeline) |
 | Cloudbeds | 🟢 **Live on main**, verified end-to-end against sandbox (commit `82f1ba6` + bookings_provider_check migration). Sandbox test data cleaned up. | 🟢 Ready for first real property | Wait for first Cloudbeds property to onboard — at that point: create store, fetch listings, onboard rooms via the Horizon admin UI | (passive — vendor side ready) |
-| Lodgify | n/a | 🟡 Myrsini replied 2026-05-28; full reply not yet processed | Reading her reply + acting on next step | **You / Me** (someone needs to read it end-to-end) |
+| Lodgify | n/a | 🟡 Myrsini acknowledged 2026-05-28; forwarded our 2 questions (meal-plan mapping + API key generation) to Lodgify product team — awaiting their response | Wait. Optional gentle nudge ~2026-06-06 if silence continues. | Lodgify product team |
 | Guesty | n/a | 🟡 Reply sent today to Karazeris for forwarding | Karazeris forwarding + Guesty integrations reply | Karazeris → Guesty |
 | **Loggia** | ✅ **Demo creds + API key + Postman collection received 2026-05-31** | 🟡 Not yet built | Us — read docs, scaffold provider, hit demo with the issued creds | **Us** (no vendor blocker; this one is ready to build) |
 | **Orange PMS (Marinet)** | n/a | 🟡 API docs URL provided 2026-05-28; vendor said properties should contact them to proceed | Read the docs at https://hotel.orangepms.com/api.html, draft reply (English/Greek) to Aspasia confirming next steps | **Us** (reply to Aspasia) → then property-side coordination |
@@ -100,12 +100,15 @@
   6. Fetch listings → onboard a test room → force sync → run the four validation scenarios
 - **Scaffold:** `cloudbeds-scaffold` branch (commit `980cd52`) — provider + dispatchers + DB migration, no UI exposure yet. Estimated ~1 hour of dev work to verify parser + merge + onboard test room.
 
-### Lodgify — 🟢 Reply received from Myrsini 2026-05-28, awaiting parse
+### Lodgify — 🟡 Myrsini acknowledged 2026-05-28, our 2 questions escalated to Lodgify product team
 
-- We replied to Myrsini Pappa 2026-05-27 with full project overview + 2 questions (breakfast detection mechanism, where to generate X-ApiKey)
-- **Myrsini replied 2026-05-28** with positive opening: *"Thank you for reaching out and for providing such a detailed overview of your project and your specific technical questions regarding the Lodgify API integration for Horizon. I have..."*
-- **Full reply content not yet processed end-to-end** — the email thread is too large for the email tool to return in one call. **Action: read the full reply in Gmail and either paste it here, or I'll attempt a chunked re-fetch next session.**
-- **Scaffold:** `lodgify-scaffold` branch (commit `fc1ab26`) — provider + dispatchers + DB migration, no UI exposure yet
+- We replied to Myrsini Pappa 2026-05-27 with full project overview + 2 questions (breakfast detection mechanism, where to generate X-ApiKey + sandbox availability)
+- **Myrsini replied 2026-05-28** (full text now read via Gmail web on 2026-06-03):
+  - *"Thank you for reaching out and for providing such a detailed overview…"*
+  - *"I have forwarded your queries regarding the meal-plan field mapping and the API key generation process to our product team for further clarification. I will keep you updated as soon as I receive a response from them."*
+- **Status:** acknowledgment only — no technical info to act on. She's the relay; substantive answer comes from Lodgify product team via her.
+- **No action required from us today.** Optional polite follow-up after 2-3 more days of silence (~2026-06-06) if she hasn't circled back.
+- **Scaffold:** `lodgify-scaffold` branch (commit `fc1ab26`) — provider + dispatchers + DB migration, no UI exposure yet. Stays parked until we get the product team's answers (specifically: how meal-plan / breakfast is exposed on `/v2/reservations/bookings` since the field isn't on the standard booking shape, and whether sandbox credentials are available).
 
 ### Guesty — 🟡 Reply sent to Karazeris today, awaiting forwarding + vendor reply
 
@@ -189,3 +192,4 @@
 - **2026-06-02 22:15 UTC:** First force-sync errored on `bookings_provider_check`. The earlier migration covered `rooms.platform` + `stores.platform` but missed `bookings.provider` — partial DDL. Applied the missing constraint via second `apply_migration`. Skill SKILL.md strengthened to bundle all three constraints (rooms / stores / bookings) into a single SQL block so the half-execute mistake is structurally impossible next time. Updated `.skill` packaged.
 - **2026-06-02 22:20 UTC:** **Cloudbeds end-to-end verified.** `/api/fetch-listings` returned 20 sandbox rooms with correct parser output (DQ(1..10) + DK(1..10), capacity 2). `/api/force-sync` for room DK(8) returned `{fetched:3, inserted:3, updated:0, deleted:0}`. Spot-checked the 3 bookings in `bookings` table: external_id/check_in/check_out/guest_count/status/raw_data all match source. `breakfast_included = false` for all three — correct, since raw `mealPlans = ""` in sandbox dummy data (the keyword detector flips to true when a real property sets `mealPlans = "breakfast"`).
 - **2026-06-02 22:25 UTC:** Cleaned up sandbox test data: 3 bookings, 2 sync_logs, 1 room (DK(8)), 1 store (Cloudbeds Sandbox) deleted. Zero orphans. Infrastructure (provider code, DB constraints, UI exposure, scaffold branches, sandbox API key in gitignored workspace file) all retained.
+- **2026-06-03:** Read Myrsini's Lodgify reply in full (via Gmail web — get_thread response too large for inline fetch). Three sentences: acknowledgment + confirmation that both our questions (meal-plan field mapping + API key generation process) have been forwarded to the Lodgify product team. No technical content yet — pure relay. No action needed from us today; optional gentle nudge in 2-3 days if no follow-up.
