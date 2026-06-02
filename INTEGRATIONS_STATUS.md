@@ -4,7 +4,7 @@
 
 > **Maintenance rule:** every status change (vendor reply, scope flip, payment received, sandbox provisioned, scaffold pushed, blocker found/cleared) gets reflected here, same session. Per the `horizon-add-integration` skill, this file is part of the "always do, every integration" contract.
 
-**Last updated:** 2026-06-02 evening UTC (added Loggia + Orange PMS)
+**Last updated:** 2026-06-02 21:43 UTC — Cloudbeds sandbox key live + smoke-tested
 
 ---
 
@@ -17,7 +17,7 @@
 | RoomRack | ✅ Demo live (1 room #111, 1,969 syncs/7d, 100% success) | 🟡 **BLOCKED: Finders Hospitality awaiting €150 activation invoice** | Sending RoomRack billing email + paying the €150 fee | **You** (decide invoice email + pay) |
 | Hotelizer | ✅ Demo live (1 room #307, 1,960 syncs/7d, 100% success) | 🟡 **BLOCKED: Lasari Comfort Living awaiting Hotelizer API-scope activation** | Hotelizer support flipping `/api/integrations/*` scope for `LASARI` account | Hotelizer support (~1 business day) |
 | HIT / Protel | n/a (push model, no demo) | 🟡 Receiver live + authed, awaiting vendor commercial OK + push activation | HIT commercial OK | HIT (unknown timeline) |
-| Cloudbeds | n/a (Partner sandbox provisioned 2026-05-29) | 🟡 **ACTION REQUIRED FROM US** | Logging into the Okta-provisioned sandbox, clicking through app setup | **You** (Cloudbeds will auto-close ticket in 5 days from 2026-06-02) |
+| Cloudbeds | 🟢 **Sandbox key issued + smoke-tested (HTTP 200 from `/getHotels`)** | 🟢 Ready to wire up | Verifying scaffold parser against real `getReservationsWithRateDetails` / `getRooms` payloads, then merge `cloudbeds-scaffold` → main | **Us** (next session: verify + merge) |
 | Lodgify | n/a | 🟡 Myrsini replied 2026-05-28; full reply not yet processed | Reading her reply + acting on next step | **You / Me** (someone needs to read it end-to-end) |
 | Guesty | n/a | 🟡 Reply sent today to Karazeris for forwarding | Karazeris forwarding + Guesty integrations reply | Karazeris → Guesty |
 | **Loggia** | ✅ **Demo creds + API key + Postman collection received 2026-05-31** | 🟡 Not yet built | Us — read docs, scaffold provider, hit demo with the issued creds | **Us** (no vendor blocker; this one is ready to build) |
@@ -83,21 +83,22 @@
 - Last vendor message: 2026-05-27 from Triphol Tsekouras (Project Manager). We replied 2026-05-27 with credentials + webhook URL.
 - **Next action — HIT (we've handed off):** waiting on commercial team OK + activation of push from their side. They quoted "εντός 2 ημερών" (within 2 days) from activation, but commercial OK is the gate.
 
-### Cloudbeds — 🟢 Partner sandbox PROVISIONED, action required from us
+### Cloudbeds — 🟢 Sandbox key live + smoke-tested, ready to wire up
 
-- **Major update from 2026-05-29:** Triphol Nilkuha (Senior API Onboarding Manager, Cloudbeds) re-routed us from MyAllocator/OTA to the correct **Marketplace Partner sandbox**, and **created a Partner sandbox account for us** — pre-populated with dummy data for testing.
-- Setup details from his email:
-  - Password setup via Okta — welcome email landed in our inbox 2026-05-29 (`noreply@okta.com`, *"You're in! Welcome to Cloudbeds!"*)
-  - App setup URL: `https://hotels.cloudbeds.com/connect/320653#/app_details`
-  - Tips: configure redirect URI for Automatic Delivery (or email delivery for new-property notifications), follow Quickstart Guide for auth, edit Administrator role permissions
-  - Pre-condition for Certification: confirm Connectivity Agreement is in place with Partnerships Manager
-- **Today (2026-06-02): 2 "ACTION REQUIRED" reminder emails from Cloudbeds** — they'll auto-close the ticket in 5 days from today (≈ 2026-06-07) if we don't respond.
-- **Next action — YOU (or me with your guidance):**
-  1. Find the Okta welcome email + 2026-05-29 Triphol email
-  2. Set password via `https://hotels.cloudbeds.com/auth/login` (or Forgot Password)
-  3. Log in, visit `https://hotels.cloudbeds.com/connect/320653#/app_details`, set up the app (decide Automatic vs Email Delivery, set redirect URI if Automatic)
-  4. Tell me when done — I can then verify the `cloudbeds-scaffold` branch parser against the sandbox's dummy data, merge to main, and we're production-ready for the first real Cloudbeds property
-- **Scaffold:** `cloudbeds-scaffold` branch (commit `980cd52`) — provider + dispatchers + DB migration, no UI exposure yet
+- **2026-05-29:** Triphol Nilkuha re-routed us from MyAllocator/OTA to the correct **Marketplace Partner sandbox** and provisioned a Partner account.
+- **2026-06-02 evening (this session):** We logged in via the Okta activation link, configured the partner app (Email delivery, 8 read scopes, `ioustinos@wecook.gr` as notification address), then used the Quickstart self-service path (Account → Apps & Marketplace → API Credentials → New Credentials → Create API Key) to issue a property-level API key for the sandbox property.
+- **Sandbox API key issued:** `cbat_hDj1j1uhDuQj9uuVXRcdv23hHpiSBCmT` (saved locally in `.cloudbeds-sandbox-credentials.md`, gitignored)
+- **Sandbox property:** ID `320653` ("The-Horizon Partner Account"), USD, UTC timezone, pre-populated with dummy data
+- **Scopes granted:** `read:addon read:customFields read:guest read:hotel read:package read:rate read:reservation read:room offline_access`
+- **Smoke test (2026-06-02 21:43 UTC):** `curl -H "Authorization: Bearer cbat_…" -H "X-PROPERTY-ID: 320653" https://hotels.cloudbeds.com/api/v1.3/getHotels` returned `HTTP 200`, `success: true`, sandbox property data. **Auth confirmed working against the v1.3 base URL.**
+- **Next action — us:**
+  1. Verify the `cloudbeds-scaffold` branch parser against real `getReservationsWithRateDetails` and `getRooms` payloads
+  2. Apply DB migration (`migrations/2026_05_27_add_cloudbeds_platform.sql`) to add `'cloudbeds'` to the rooms.platform + stores.platform CHECK constraints
+  3. Add UI exposure (7 frontend files per the runbook)
+  4. Merge `cloudbeds-scaffold` → `main`
+  5. Create a "Cloudbeds Sandbox" store in Horizon admin with `api_key_name=320653`, `api_key_secret=cbat_hDj1j1uhDuQj9uuVXRcdv23hHpiSBCmT`
+  6. Fetch listings → onboard a test room → force sync → run the four validation scenarios
+- **Scaffold:** `cloudbeds-scaffold` branch (commit `980cd52`) — provider + dispatchers + DB migration, no UI exposure yet. Estimated ~1 hour of dev work to verify parser + merge + onboard test room.
 
 ### Lodgify — 🟢 Reply received from Myrsini 2026-05-28, awaiting parse
 
@@ -182,3 +183,4 @@
 
 - **2026-06-02 evening (initial):** File created. RoomRack status corrected (was previously "live healthy" — actually demo is healthy, but Finders Hospitality customer is blocked on €150 activation fee). Cloudbeds status escalated to "action required from us" (Partner sandbox provisioned 2026-05-29, auto-close threat from today's reminder). Lodgify status updated (Myrsini reply received 2026-05-28, full content still to be processed). Hotelizer/Lasari status reflects today's support email send. Guesty status reflects today's reply send.
 - **2026-06-02 evening (+30m):** Added **Loggia** (Eutychis Vavourakis sent demo creds + API key + Postman collection on 2026-05-31 — ready to build; no vendor blocker, just our turn) and **Orange PMS / Marinet** (Aspasia Polymerou sent API docs URL `https://hotel.orangepms.com/api.html` on 2026-05-28 — we owe a technical reply + sandbox request after walking the docs).
+- **2026-06-02 21:43 UTC:** **Cloudbeds sandbox key issued + smoke-tested.** Partner app configured (Email delivery, 8 read scopes), then Quickstart property-level credentials flow used to mint `cbat_hDj1j1uhDuQj9uuVXRcdv23hHpiSBCmT` for sandbox property 320653. Curl to `/api/v1.3/getHotels` returned HTTP 200 + sandbox property data — auth verified, v1.3 base URL confirmed, X-PROPERTY-ID header accepted. Status moves to 🟢; next session is parser verification + scaffold merge.
