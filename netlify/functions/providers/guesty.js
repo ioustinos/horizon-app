@@ -47,14 +47,15 @@
 //   15 / second, 120 / minute, 5,000 / hour.
 //   On 429, honor `Retry-After` response header (seconds).
 //
-// ── BREAKFAST DETECTION — DESIGN CHOICE ─────────────────────────────────────
-// Guesty is primarily a vacation-rental PMS. The reservation response does
-// not carry a board-basis / meal-plan field. Same situation as Lodgify.
-// Default to per-room toggle reusing stores.meal_plan_breakfast_values:
-//   - empty/null → all bookings on this room include breakfast (true)
-//   - 'NEVER'    → all bookings on this room do NOT include breakfast
-// We may later switch to mapping Guesty rate plans or amenities once the
-// property confirms how breakfast is modeled in their account.
+// ── BREAKFAST DETECTION ─────────────────────────────────────────────────────
+// Guesty exposes meal plan info on the reservation's rate plan:
+//   reservation.ratePlan.mealPlans → array, e.g. ["breakfast"] or
+//                                    ["half_board"], or [] when none.
+// (Documented in the V3 booking flow example.) We treat the presence of
+// "breakfast", "half_board", "full_board" or "all_inclusive" as breakfast
+// included. Falls back to the listing amenity "breakfast" if mealPlans
+// is missing / empty. Last-resort fallback: per-store toggle via
+// stores.meal_plan_breakfast_values ('NEVER' = always exclude).
 
 import {
   upsertBookings,
@@ -161,7 +162,7 @@ async function fetchAllReservations(token, { fromIso, toIso }) {
 
   return fetchAllPaged(token, '/v1/reservations', {
     'filters[]': filterValue,
-    fields: '_id status checkInDateLocal checkOutDateLocal nightsCount guestsCount listingId source money',
+    fields: '_id status checkInDateLocal checkOutDateLocal nightsCount guestsCount listingId source money ratePlan ratePlan.mealPlans',
     sort: '-checkInDateLocal',
   });
 }
@@ -270,9 +271,10 @@ function transformReservation(r, listingId, store) {
   const status = ['canceled', 'cancelled', 'declined', 'expired', 'inquiry']
     .includes(raw) ? 'cancelled' : 'confirmed';
 
-  // Breakfast detection — per-room toggle (see DESIGN CHOICE).
-  const flag = String(store?.meal_plan_breakfast_values ?? '').trim().toUpperCase();
-  const breakfast = flag !== 'NEVER';
+  // Breakfast detection — primary: reservation.ratePlan.mealPlans.
+  // Fallback: per-store toggle via stores.meal_plan_breakfast_values
+  // ('NEVER' = always exclude).
+  const breakfast = ratePlanIncludesBreakfast(r) ?? storeDefaultBreakfast(store);
 
   return {
     external_id,
@@ -295,6 +297,23 @@ function sameListing(r, listingId) {
 function toIsoDate(s) {
   if (!s) return '';
   return String(s).slice(0, 10);
+}
+
+
+// True if the reservation's rate plan declares an included meal-plan that
+// counts as breakfast. Null if no signal at all (caller should fall back).
+function ratePlanIncludesBreakfast(r) {
+  const mp = r?.ratePlan?.mealPlans;
+  if (!Array.isArray(mp) || mp.length === 0) return null;
+  // Anything that bundles breakfast counts as breakfast included.
+  const INCLUDES = new Set(['breakfast', 'half_board', 'full_board', 'all_inclusive']);
+  return mp.some(v => INCLUDES.has(String(v ?? '').toLowerCase()));
+}
+
+// Per-store fallback: default true, 'NEVER' flips to false.
+function storeDefaultBreakfast(store) {
+  const flag = String(store?.meal_plan_breakfast_values ?? '').trim().toUpperCase();
+  return flag !== 'NEVER';
 }
 
 void supabase;
