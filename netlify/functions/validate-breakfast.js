@@ -160,14 +160,19 @@ const innerHandler = async (event) => {
     entitled = room.max_capacity;
   } else {
     // ── Find active bookings covering wishDate ──────────────────────────────
+    // Breakfast window = (check_in, check_out] — i.e. the mornings AFTER
+    // arrival, including checkout morning. For a 1→4 Jun stay (3 nights)
+    // breakfast is served on 2, 3 and 4 Jun. We do NOT serve breakfast on
+    // arrival morning (guests haven't checked in yet) and we DO serve it on
+    // checkout morning (standard hotel practice).
     const { data: bookings, error: bErr } = await supabase
       .from('bookings')
       .select('id, guest_count, check_in, check_out, breakfast_included')
       .eq('room_id', room.id)
       .eq('status', 'confirmed')
       .eq('breakfast_included', true)
-      .lte('check_in', wishDate)
-      .gt('check_out', wishDate);
+      .lt('check_in', wishDate)
+      .gte('check_out', wishDate);
 
     if (bErr) {
       console.error('Booking lookup error:', bErr);
