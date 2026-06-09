@@ -48,28 +48,53 @@
 //   On 429, honor `Retry-After` response header (seconds).
 //
 // ── BREAKFAST DETECTION ─────────────────────────────────────────────────────
-// VERIFIED (2026-06-02): `reservation.ratePlan.mealPlans` is NOT returned on
-// the standard GET /v1/reservations response. Three pieces of evidence:
-//   1. "How to Search for Reservations" guide field table doesn't list it.
-//   2. "Reservation Webhooks" page (full payload schema) doesn't mention it.
-//   3. The V3 booking-flow JSON example showing mealPlans is from a QUOTE
-//      response (pre-checkout), not a saved reservation.
+// CORRECTED (2026-06-04) per Myrsini @ Guesty integrations:
 //
-// PRIMARY signal: the listing-level `breakfast` amenity, documented in the
-// Supported Amenities catalog (Kitchen & Dining group, channel-mapped to
-// Booking.com / Expedia / Marriott). We read this at room-mapping time and
-// stamp each Horizon room with whether the linked listing offers breakfast.
+//   "Rateplans should be included in the reservation response both for v1
+//    and v3."
 //
-// FALLBACK: per-store override via stores.meal_plan_breakfast_values:
-//   - empty / null → use whatever the listing amenity says
-//   - 'ALWAYS'      → force breakfast=true on every booking
-//   - 'NEVER'       → force breakfast=false on every booking
+// Our prior reading of the docs (How-to-Search field table + Reservation
+// Webhooks payload schema, neither of which lists `ratePlan`) led us to
+// conclude ratePlan was quote-only. The vendor explicitly contradicted
+// that. Trust the vendor — the docs are incomplete relative to what the
+// API actually returns.
 //
-// OPEN: per-stay add-ons / additional fees / custom fields aren't checked
-// yet — the docs don't make clear which (if any) of these is the idiomatic
-// place. To be resolved once Guesty integrations contact responds to the
-// scoping email; updating the detector is then localized to
-// `reservationIncludesBreakfast()` below.
+// Detection chain, in priority order:
+//
+//   1. Per-store HARD override (stores.meal_plan_breakfast_values):
+//        - "ALWAYS" → breakfast=true on every booking
+//        - "NEVER"  → breakfast=false on every booking
+//        - empty    → fall through to signal-based detection
+//
+//   2. PRIMARY — reservation.ratePlan.mealPlans
+//        Array of meal-plan strings on the saved reservation. If any
+//        element contains "breakfast" (case-insensitive), → true. Per
+//        Myrsini, this is on the reservation for both v1 and v3.
+//
+//   3. SECONDARY — listing-level "breakfast" amenity
+//        Stamped onto room.breakfast_baseline at mapping time (see
+//        fetchGuestyListings → listingOffersBreakfast). Only meaningful
+//        when the Guesty customer actively maintains the amenity.
+//        Myrsini explicitly warned: "using it depends on the
+//        user/Guesty customer setup. You should check with the Guesty
+//        users you're working with to validate if they're using this
+//        amenity."
+//
+//   4. Conservative default — true (don't deny a valid guest because
+//        metadata is empty; manual ALWAYS/NEVER override always wins).
+//
+// NOT IMPLEMENTED (deferred): per-stay additional fees / upsell add-ons.
+// Per Myrsini: "Upsell add-ons and additional fees are the same. The type
+// of additional fee would determine what it is. As for the fee
+// description, this depends on the user and how they set it up in
+// Guesty, so you will need to ask the user to give you this
+// information."
+//
+// → When a real Guesty customer surfaces who models breakfast as a per-
+// stay fee, ask them for the exact fee description string, then extend
+// resolveBreakfast() to scan reservation.additionalFees[].description /
+// .name for that substring. Keep the order: store override > ratePlan >
+// amenity > additionalFees > default.
 
 import {
   upsertBookings,
@@ -118,7 +143,9 @@ export async function syncGuesty(room, { lookbackDays, forwardDays }) {
     // the Guesty listing _id.
     const ours = allReservations.filter(r => sameListing(r, room.platform_id));
 
-    const transform = (r) => transformReservation(r, room.platform_id, store);
+    // Bind room + store into the transform so the parser has the context
+    // it needs for breakfast detection (ratePlan / amenity baseline / override).
+    const transform = (r) => transformReservation(r, room, store);
 
     const stats = await upsertBookings(room, 'guesty', ours, transform, fromIso);
 
@@ -277,7 +304,7 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 // ─── Transforms ──────────────────────────────────────────────────────────────
 
-function transformReservation(r, listingId, store) {
+function transformReservation(r, room, store) {
   const external_id = String(r._id ?? r.id ?? '');
   const check_in    = toIsoDate(r.checkInDateLocal ?? r.checkIn);
   const check_out   = toIsoDate(r.checkOutDateLocal ?? r.checkOut);
@@ -290,14 +317,11 @@ function transformReservation(r, listingId, store) {
   const status = ['canceled', 'cancelled', 'declined', 'expired', 'inquiry']
     .includes(raw) ? 'cancelled' : 'confirmed';
 
-  // Breakfast detection — see header. Primary signal is the listing-level
-  // 'breakfast' amenity, stamped into `room.breakfast_baseline` at mapping
-  // time. Per-store overrides flip the default both ways.
-  const breakfast = resolveBreakfast(room, store);
+  const breakfast = resolveBreakfast(r, room, store);
 
   return {
     external_id,
-    room_code:          String(r.listingId ?? listingId ?? ''),
+    room_code:          String(r.listingId ?? room?.platform_id ?? ''),
     check_in,
     check_out,
     guest_count:        guests,
@@ -319,20 +343,27 @@ function toIsoDate(s) {
 }
 
 
-// Resolve breakfast for a given booking using:
-//   1. Per-store override (stores.meal_plan_breakfast_values 'ALWAYS' / 'NEVER')
-//   2. Listing-level amenity baseline stamped on the room
-//        (room.breakfast_baseline, set by fetchGuestyListings)
-//   3. Conservative default: include breakfast (so we don't accidentally deny
-//      a valid guest because our metadata isn't filled in).
-//
-// The reservation parameter is kept on the signature for future use (per-stay
-// add-on / custom-field detection, once we know where Guesty exposes that).
-function resolveBreakfast(room, store) {
+// Resolve breakfast for a given booking — see BREAKFAST DETECTION header
+// comment for full rationale + chain. Order matters.
+function resolveBreakfast(reservation, room, store) {
+  // 1. Per-store hard override — wins over everything.
   const flag = String(store?.meal_plan_breakfast_values ?? '').trim().toUpperCase();
   if (flag === 'ALWAYS') return true;
   if (flag === 'NEVER')  return false;
+
+  // 2. PRIMARY — reservation.ratePlan.mealPlans (per Myrsini, 2026-06-04).
+  const mealPlans = reservation?.ratePlan?.mealPlans;
+  if (Array.isArray(mealPlans) && mealPlans.length > 0) {
+    return mealPlans.some(mp => String(mp).toLowerCase().includes('breakfast'));
+  }
+
+  // 3. SECONDARY — listing amenity baseline (only meaningful when the
+  // Guesty customer actively maintains the "breakfast" amenity on the listing).
   if (typeof room?.breakfast_baseline === 'boolean') return room.breakfast_baseline;
+
+  // 4. Conservative default — true so a valid guest isn't denied because
+  // metadata is empty. The ALWAYS/NEVER override in (1) is the escape hatch
+  // for properties that need the strict version.
   return true;
 }
 
