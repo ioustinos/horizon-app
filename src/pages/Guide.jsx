@@ -313,7 +313,7 @@ export default function Guide() {
               <li><strong>WebHotelier:</strong> API username (also called the <em>property code</em>, e.g. <code>HRZNTEST</code>) and an API password.</li>
               <li><strong>RoomRack:</strong> a per-property <em>ApiToken</em> (UUID-shaped). The client enables it in their RoomRack PMS at <em>Setup → Device Interface → General API / Partners API</em>; the token appears there once activated.</li>
               <li><strong>Hotelizer:</strong> a Basic Auth username + password issued by Hotelizer per property. A public demo property is available with <code>username</code> / <code>pass</code> for testing — see <a href="https://hotelizer.gitbook.io/hotelizer-api/guidelines" target="_blank" rel="noreferrer">the Hotelizer docs</a>.</li>
-              <li><strong>Cloudbeds:</strong> a per-property API key (starts with <code>cbat_</code>). The property generates it in <em>Cloudbeds Marketplace → API Credentials → + New Credentials → Create API Key</em>, then approves the scopes Horizon needs (read: rate, room, hotel, reservation, guest, customFields, package, addon). The key is shown only once — store it carefully. You'll also need the <strong>Cloudbeds Property ID</strong> (numeric, visible in the URL of the property's Cloudbeds admin). See <a href="https://developers.cloudbeds.com/docs/quickstart-guide-api-authentication-for-property-level-users" target="_blank" rel="noreferrer">the Cloudbeds Quickstart Guide</a>.</li>
+              <li><strong>Cloudbeds:</strong> a per-property API key (starts with <code>cbat_</code>) plus the numeric <strong>Cloudbeds Property ID</strong>. The property generates the key themselves from inside their Cloudbeds account. See the <em>Cloudbeds stores: walking the property through API key creation</em> section below for the full step-by-step you can forward to them.</li>
             </ul>
           </li>
           <li><strong>GonnaOrder Store ID</strong> — the numeric identifier of the GonnaOrder store. You can find it in the GonnaOrder admin URL or in the store settings.</li>
@@ -376,6 +376,63 @@ export default function Guide() {
           Leave the field blank to keep the legacy default — every HostHub booking is treated as
           breakfast-included. Useful for properties where the rate plan implies breakfast for all
           stays.
+        </p>
+
+        <h3>Cloudbeds stores: walking the property through API key creation</h3>
+        <p>
+          Cloudbeds API access is self-serve from inside each property's account — they fill out
+          a short form and Cloudbeds issues a one-time API key. Forward the steps below to the
+          property contact verbatim (translate to Greek if needed):
+        </p>
+        <ol>
+          <li>
+            Log in to Cloudbeds → <strong>Account</strong> → <strong>Apps &amp; Marketplace</strong>{' '}
+            → <strong>API Credentials</strong> → <strong>+ New Credentials</strong>.
+          </li>
+          <li>
+            Fill the form with these values:
+            <table className="guide-table">
+              <thead>
+                <tr><th>Field</th><th>What to put</th></tr>
+              </thead>
+              <tbody>
+                <tr><td><strong>Credentials Name</strong></td><td><code>Horizon</code> (or any descriptive label)</td></tr>
+                <tr><td><strong>Integration Type</strong></td><td><strong>Point of Sale (POS)</strong> — GonnaOrder is the POS; Horizon is read-only middleware sitting in front of it</td></tr>
+                <tr><td><strong>Redirect URI</strong></td><td><code>https://localhost</code> — the field is required by the form but Horizon doesn't use OAuth redirects, so anything works</td></tr>
+                <tr><td><strong>Scopes</strong></td><td>Tick exactly these 8 read-only boxes: <code>read:reservation</code>, <code>read:room</code>, <code>read:guest</code>, <code>read:hotel</code>, <code>read:rate</code>, <code>read:addon</code>, <code>read:package</code>, <code>read:customFields</code>. Nothing else.</td></tr>
+              </tbody>
+            </table>
+          </li>
+          <li>Click <strong>Create API Key</strong> → on the consent screen, click <strong>Allow Access</strong>.</li>
+          <li>
+            Cloudbeds shows the API key (starts with <code>cbat_…</code>) in a modal —{' '}
+            <strong>only once</strong>. The property must copy it before closing the modal. If lost,
+            the only recovery is to delete the credentials entry and reissue.
+          </li>
+          <li>
+            The property sends back <strong>two</strong> values: (a) the <code>cbat_…</code> API key,
+            and (b) their <strong>Property ID</strong> — the numeric ID visible in the URL when they're
+            inside their property, e.g. <code>hotels.cloudbeds.com/connect/<strong>123456</strong></code>{' '}
+            → Property ID is <code>123456</code>.
+          </li>
+        </ol>
+        <div className="callout tip">
+          <strong>Why Point of Sale (POS)?</strong> The other Integration Types in the Cloudbeds
+          dropdown (Channel Manager, PMS, Booking Engine, Revenue Management, etc.) describe systems
+          that <em>write</em> to Cloudbeds. Horizon only reads reservation data on behalf of a POS
+          (GonnaOrder), so POS is the right classification. Picking another type doesn't break the
+          integration but mislabels what we are inside the property's Cloudbeds account audit log.
+        </div>
+        <div className="callout warn">
+          <strong>The key is shown once.</strong> If the property closes the modal before copying,
+          the key is unrecoverable. Always warn them about this <em>before</em> they click Create.
+          Recovery means deleting the credentials entry and creating a new one — fine, but adds
+          another round-trip.
+        </div>
+        <p>
+          With both values in hand, create the store in <a href="/admin/stores">Stores</a> using
+          <code>api_key_name</code> = the Property ID and <code>api_key_secret</code> = the{' '}
+          <code>cbat_…</code> key (see the form table above for the exact fields).
         </p>
 
       </section>
