@@ -105,6 +105,10 @@ export default function Rooms() {
       const { data: { session } } = await supabase.auth.getSession()
       const token = session?.access_token
 
+      // Note: /api/force-sync redirects to the background function. Background
+      // functions return HTTP 202 immediately and run async (up to 15 min).
+      // This unblocks us from Netlify's 10s sync-function timeout, which was
+      // killing Cloudbeds syncs that take ~13s to fetch reservation data.
       const res = await fetch(`/api/force-sync?room_id=${f.id}`, {
         method: 'POST',
         headers: {
@@ -112,19 +116,42 @@ export default function Rooms() {
           'Authorization': `Bearer ${token}`,
         },
       })
-      const result = await res.json()
 
-      if (result.error) {
-        setSyncResults(r => ({ ...r, [f.id]: { ok: false, message: result.error } }))
+      if (res.status === 202 || res.status === 200) {
+        // Dispatched. Poll sync_logs for completion (background runs async).
+        setSyncResults(r => ({ ...r, [f.id]: { ok: null, message: 'Syncing… checking back every 5s' } }))
+
+        const startedAt = new Date().toISOString()
+        let resolved = false
+        for (let attempt = 0; attempt < 36 && !resolved; attempt++) { // up to 3 min
+          await new Promise(r => setTimeout(r, 5000))
+          const { data: logs } = await supabase
+            .from('sync_logs')
+            .select('status, bookings_fetched, bookings_inserted, error_message, created_at')
+            .eq('room_id', f.id)
+            .gte('created_at', startedAt)
+            .order('created_at', { ascending: false })
+            .limit(1)
+          const log = logs && logs[0]
+          if (log && log.status && log.status !== 'running') {
+            resolved = true
+            if (log.status === 'success') {
+              setSyncResults(r => ({
+                ...r,
+                [f.id]: { ok: true, message: `Synced ${log.bookings_fetched ?? 0} bookings (${log.bookings_inserted ?? 0} new)` },
+              }))
+              fetchRooms()
+            } else {
+              setSyncResults(r => ({ ...r, [f.id]: { ok: false, message: log.error_message || 'Sync failed' } }))
+            }
+          }
+        }
+        if (!resolved) {
+          setSyncResults(r => ({ ...r, [f.id]: { ok: null, message: 'Still running — check Sync Logs page in a minute' } }))
+        }
       } else {
-        setSyncResults(r => ({
-          ...r,
-          [f.id]: {
-            ok: true,
-            message: `Synced ${result.fetched ?? 0} bookings (${result.inserted ?? 0} new)`,
-          },
-        }))
-        fetchRooms()
+        const body = await res.text().catch(() => '')
+        setSyncResults(r => ({ ...r, [f.id]: { ok: false, message: `HTTP ${res.status}${body ? `: ${body.slice(0,120)}` : ''}` } }))
       }
     } catch (err) {
       setSyncResults(r => ({ ...r, [f.id]: { ok: false, message: err.message } }))

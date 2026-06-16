@@ -200,14 +200,32 @@ async function cloudbedsGet(url, { apiKey, propertyID }, params) {
   }
   const fullUrl = qs.toString() ? `${url}?${qs.toString()}` : url;
 
+  // Defensive timeout: even with background functions (15-min platform cap),
+  // a single hung Cloudbeds call shouldn't block the rest of the cron. 120s
+  // is comfortably above the slowest observed response (~13s) but well under
+  // the platform limit.
+  const FETCH_TIMEOUT_MS = 120000;
   for (let attempt = 0; attempt < 3; attempt++) {
-    const res = await fetch(fullUrl, {
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'X-PROPERTY-ID': String(propertyID),
-        Accept: 'application/json',
-      },
-    });
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+    let res;
+    try {
+      res = await fetch(fullUrl, {
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'X-PROPERTY-ID': String(propertyID),
+          Accept: 'application/json',
+        },
+        signal: controller.signal,
+      });
+    } catch (e) {
+      clearTimeout(timer);
+      if (e.name === 'AbortError') {
+        throw new Error(`Cloudbeds API timeout (>${FETCH_TIMEOUT_MS/1000}s) on ${url}`);
+      }
+      throw e;
+    }
+    clearTimeout(timer);
 
     if (res.status === 429) {
       const retryAfter = parseInt(res.headers.get('retry-after') || '1', 10);
