@@ -180,15 +180,24 @@ async function loggiaGet(url, apiKey) {
 // ─── Transforms ─────────────────────────────────────────────────────────────
 function transformBooking(r, room, breakfastAllowlist) {
   const external_id = String(r.id ?? r.booking_id ?? r.bookingId ?? r.uuid ?? '');
-  const check_in    = toIsoDate(r.checkin ?? r.check_in ?? r.checkIn ?? r.arrival ?? r.date_from ?? '');
-  const check_out   = toIsoDate(r.checkout ?? r.check_out ?? r.checkOut ?? r.departure ?? r.date_to ?? '');
+  // Loggia returns 'checkin_day' / 'checkout_day' as plain YYYY-MM-DD strings.
+  // Other variants kept for forward compatibility.
+  const check_in    = toIsoDate(r.checkin_day ?? r.checkin ?? r.check_in ?? r.checkIn ?? r.arrival ?? r.date_from ?? '');
+  const check_out   = toIsoDate(r.checkout_day ?? r.checkout ?? r.check_out ?? r.checkOut ?? r.departure ?? r.date_to ?? '');
+  // Loggia uses 'num_guests' as the canonical headcount; fall back to
+  // adults+kids+infants if a future endpoint exposes them.
+  const explicitTotal = parseInt(r.num_guests ?? r.guests ?? r.guest_count ?? 0, 10) || 0;
   const adults      = parseInt(r.adults ?? 0, 10);
   const kids        = parseInt(r.kids ?? r.children ?? 0, 10);
   const infants     = parseInt(r.infants ?? 0, 10);
-  const guests      = (adults + kids + infants) || parseInt(r.guests ?? r.guest_count ?? 1, 10) || 1;
+  const guests      = explicitTotal || (adults + kids + infants) || 1;
 
+  // Loggia cancellation signal: the 'canceled' field is populated with a
+  // timestamp/date when the booking is cancelled; null otherwise. Fall back
+  // to string-status patterns for any other endpoint variant.
   const statusRaw = String(r.status ?? r.booking_status ?? r.state ?? '').toLowerCase().trim();
-  const status = (/cancel|declined|expired|no.?show|rejected/.test(statusRaw))
+  const isCanceled = r.canceled != null && r.canceled !== '' && r.canceled !== false;
+  const status = (isCanceled || /cancel|declined|expired|no.?show|rejected/.test(statusRaw))
     ? 'cancelled' : 'confirmed';
 
   const breakfast = resolveBreakfast(r, breakfastAllowlist);
@@ -219,11 +228,12 @@ function bookingMatchesRoom(b, roomPlatformId) {
 }
 function extractArray(json) {
   if (Array.isArray(json)) return json;
-  if (Array.isArray(json?.data))       return json.data;
-  if (Array.isArray(json?.properties)) return json.properties;
-  if (Array.isArray(json?.items))      return json.items;
-  if (Array.isArray(json?.bookings))   return json.bookings;
-  if (Array.isArray(json?.results))    return json.results;
+  if (Array.isArray(json?.data))         return json.data;
+  if (Array.isArray(json?.properties))   return json.properties;
+  if (Array.isArray(json?.reservations)) return json.reservations;
+  if (Array.isArray(json?.items))        return json.items;
+  if (Array.isArray(json?.bookings))     return json.bookings;
+  if (Array.isArray(json?.results))      return json.results;
   return [];
 }
 function toIsoDate(s) {
@@ -246,6 +256,7 @@ function resolveBreakfast(r, allowlist) {
     // Keyword substring match across free-text fields on the booking.
     const fields = [
       r.rate_plan, r.ratePlan, r.rate_plan_name, r.ratePlanName,
+      r.rate_name,  // Loggia rate name (e.g. "Room Only", "Bed & Breakfast")
       r.notes, r.comment, r.special_request, r.meal_plan, r.mealPlan,
       r.tags, r.label,
     ];
