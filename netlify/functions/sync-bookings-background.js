@@ -18,6 +18,7 @@ import { syncWebHotelier } from './providers/webhotelier.js';
 import { syncRoomRack }    from './providers/roomrack.js';
 import { syncHotelizer }   from './providers/hotelizer.js';
 import { syncCloudbeds }   from './providers/cloudbeds.js';
+import { syncLoggia }      from './providers/loggia.js';
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -30,6 +31,7 @@ const PROVIDERS = {
   roomrack:    syncRoomRack,
   hotelizer:   syncHotelizer,
   cloudbeds:   syncCloudbeds,
+  loggia:      syncLoggia,
 };
 
 // Columns we need from the joined `stores` row for any provider.

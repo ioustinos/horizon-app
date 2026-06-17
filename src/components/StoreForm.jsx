@@ -160,6 +160,7 @@ export default function StoreForm({ store, onClose, onSaved }) {
                 <option value="roomrack">RoomRack</option>
                 <option value="hotelizer">Hotelizer</option>
                 <option value="cloudbeds">Cloudbeds</option>
+                <option value="loggia">Loggia</option>
                 <option value="other">Other (no booking platform)</option>
               </select>
               <p className="field-hint">
@@ -171,6 +172,8 @@ export default function StoreForm({ store, onClose, onSaved }) {
                   ? 'Hotelizer uses Basic Auth (username + password). Public demo: username / pass.'
                   : form.platform === 'cloudbeds'
                   ? 'Cloudbeds uses a per-property API key (cbat_…). Username = the numeric Cloudbeds propertyID; Password = the API key. Generated in Cloudbeds Marketplace → API Credentials.'
+                  : form.platform === 'loggia'
+                  ? 'Loggia uses a Page ID + API key combo. Username = the numeric Loggia page_id (provided by Loggia); Password = the API key. Sent as x-api-key header on every call.'
                   : form.platform === 'other'
                   ? 'Rooms will be managed manually — no API sync.'
                   : 'HostHub uses an API key for authentication.'}
@@ -185,6 +188,7 @@ export default function StoreForm({ store, onClose, onSaved }) {
                 {form.platform === 'webhotelier' ? 'Username / Property Code'
                   : form.platform === 'hotelizer' ? 'Username'
                   : form.platform === 'cloudbeds' ? 'Cloudbeds Property ID'
+                  : form.platform === 'loggia' ? 'Loggia Page ID'
                   : 'API Key Name'}
               </label>
               <input
@@ -195,6 +199,7 @@ export default function StoreForm({ store, onClose, onSaved }) {
                 placeholder={form.platform === 'webhotelier' ? 'e.g. HRZNTEST'
                   : form.platform === 'hotelizer' ? 'e.g. username (demo)'
                   : form.platform === 'cloudbeds' ? 'e.g. 320653'
+                  : form.platform === 'loggia' ? 'e.g. 4634'
                   : 'Username / key identifier'}
               />
               {form.platform === 'webhotelier' && (
@@ -206,6 +211,9 @@ export default function StoreForm({ store, onClose, onSaved }) {
               {form.platform === 'cloudbeds' && (
                 <p className="field-hint">The numeric Cloudbeds propertyID — visible in the URL of the property's Cloudbeds admin (e.g. <code>hotels.cloudbeds.com/connect/<strong>320653</strong>/…</code>). Sent as <code>X-PROPERTY-ID</code> on every API call.</p>
               )}
+              {form.platform === 'loggia' && (
+                <p className="field-hint">The numeric Loggia <code>page_id</code> issued to your account by Loggia. Used as a query param on every API call.</p>
+              )}
             </div>
             )}
             <div className="field-group">
@@ -214,6 +222,7 @@ export default function StoreForm({ store, onClose, onSaved }) {
                   : form.platform === 'roomrack' ? 'ApiToken'
                   : form.platform === 'hotelizer' ? 'Password'
                   : form.platform === 'cloudbeds' ? 'Cloudbeds API Key (cbat_…)'
+                  : form.platform === 'loggia' ? 'Loggia API Key'
                   : 'API Key Secret'}
               </label>
               <input
@@ -225,6 +234,7 @@ export default function StoreForm({ store, onClose, onSaved }) {
                   : form.platform === 'roomrack' ? 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'
                   : form.platform === 'hotelizer' ? 'e.g. pass (demo)'
                   : form.platform === 'cloudbeds' ? 'cbat_xxxxxxxxxxxxxxxxxxxx'
+                  : form.platform === 'loggia' ? 'Loggia API key'
                   : 'Password / secret key'}
                 autoComplete="new-password"
               />
@@ -233,6 +243,9 @@ export default function StoreForm({ store, onClose, onSaved }) {
               )}
               {form.platform === 'cloudbeds' && (
                 <p className="field-hint">Generated in Cloudbeds Marketplace → API Credentials → Create API Key. Starts with <code>cbat_</code>. Shown only once at creation.</p>
+              )}
+              {form.platform === 'loggia' && (
+                <p className="field-hint">Provided by Loggia (Webhotelier family). Sent as <code>x-api-key</code> header on every request.</p>
               )}
             </div>
           </div>

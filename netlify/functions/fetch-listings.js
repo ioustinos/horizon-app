@@ -11,6 +11,7 @@ import { fetchWebHotelierListings } from './providers/webhotelier.js';
 import { fetchRoomRackListings }    from './providers/roomrack.js';
 import { fetchHotelizerListings }   from './providers/hotelizer.js';
 import { fetchCloudbedsListings }   from './providers/cloudbeds.js';
+import { fetchLoggiaListings }      from './providers/loggia.js';
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -23,6 +24,7 @@ const LISTING_PROVIDERS = {
   roomrack:    fetchRoomRackListings,
   hotelizer:   fetchHotelizerListings,
   cloudbeds:   fetchCloudbedsListings,
+  loggia:      fetchLoggiaListings,
 };
 
 export const handler = async (event) => {
