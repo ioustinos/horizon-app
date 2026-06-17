@@ -111,7 +111,7 @@ export async function fetchLoggiaListings(store) {
     .map(p => {
       const platform_id = String(propertyId(p) ?? '');
       if (!platform_id) return null;
-      const name = String(p.name ?? p.title ?? p.property_name ?? `Property ${platform_id}`);
+      const name = String(p.property_title ?? p.name ?? p.title ?? p.property_name ?? p.property_moto ?? p.moto ?? `Property ${platform_id}`);
       const capacity = Number(p.capacity ?? p.max_guests ?? p.maxGuests ?? p.guests ?? 0) || null;
       return { platform_id, name, capacity, platform: 'loggia' };
     })
