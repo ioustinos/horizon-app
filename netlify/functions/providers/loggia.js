@@ -249,22 +249,53 @@ function parseAllowlist(v) {
   return null;
 }
 function resolveBreakfast(r, allowlist) {
+  // 1. Per-store hard overrides — ALWAYS / NEVER win unconditionally.
   if (Array.isArray(allowlist) && allowlist.length) {
     const upper = allowlist.map(s => s.toUpperCase());
     if (upper.includes('ALWAYS')) return true;
     if (upper.includes('NEVER'))  return false;
-    // Keyword substring match across free-text fields on the booking.
-    const fields = [
-      r.rate_plan, r.ratePlan, r.rate_plan_name, r.ratePlanName,
-      r.rate_name,  // Loggia rate name (e.g. "Room Only", "Bed & Breakfast")
-      r.notes, r.comment, r.special_request, r.meal_plan, r.mealPlan,
-      r.tags, r.label,
-    ];
-    const hay = fields.filter(Boolean).map(x => String(x).toLowerCase()).join(' ');
+  }
+
+  // Build the free-text hay we'll match against in both the per-store
+  // allowlist branch and the auto-detect branch below.
+  const fields = [
+    r.rate_plan, r.ratePlan, r.rate_plan_name, r.ratePlanName,
+    r.rate_name,  // Loggia rate name (e.g. "Room Only", "Breakfast Included")
+    r.notes, r.comment, r.special_request, r.meal_plan, r.mealPlan,
+    r.tags, r.label,
+  ];
+  const hay = fields.filter(Boolean).map(x => String(x).toLowerCase()).join(' ');
+
+  // 2. Per-store custom keyword allowlist (substring match).
+  if (Array.isArray(allowlist) && allowlist.length) {
     return allowlist.some(k => k && hay.includes(String(k).toLowerCase()));
   }
-  // Default for vacation rentals: no breakfast unless property explicitly
-  // configures it via the allowlist or ALWAYS override.
+
+  // 3. Auto-detect — Loggia exposes breakfast via rate-name convention
+  // (e.g. rate id 14341 "Breakfast Included" seen in the demo). Property
+  // owners typically name their BB rates with one of these patterns; we
+  // catch them without requiring per-store config. Patterns are anchored
+  // to avoid false positives (e.g. plain "B" in another word).
+  if (
+    hay.includes('breakfast') ||
+    hay.includes('b&b') ||
+    hay.includes('bed and breakfast') ||
+    hay.includes('half board') ||
+    hay.includes('full board') ||
+    hay.includes('all incl') ||
+    hay.includes('all-incl') ||
+    hay.includes('inclusive') ||
+    hay.includes('πρωιν') ||        // matches πρωινό, πρωινού, πρωινά
+    /\bbb\b/.test(hay) ||         // standalone "BB" code
+    /\bhb\b/.test(hay) ||         // "HB" — half board
+    /\bfb\b/.test(hay) ||         // "FB" — full board
+    /\bai\b/.test(hay)            // "AI" — all inclusive
+  ) {
+    return true;
+  }
+
+  // 4. Conservative default — Loggia is vacation-rental focused; if no
+  // signal matched, breakfast not included.
   return false;
 }
 
