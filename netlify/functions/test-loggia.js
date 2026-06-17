@@ -38,6 +38,30 @@ export async function handler(event) {
     const bBody = await safeJson(bRes);
     out.bookings = { status: bRes.status, url: bUrl, body_keys: keysOf(bBody), sample: sample(bBody) };
 
+    // Surface ALL distinct rate_names + meal-plan-ish text across the whole
+    // reservations array so we can see whether breakfast is captured anywhere
+    // in Loggia's response shape (rate_name / notes / fees / etc).
+    const allBookings = Array.isArray(bBody?.reservations) ? bBody.reservations : [];
+    const rateNames = {};
+    const textFields = {};
+    const otherKeys = new Set();
+    for (const b of allBookings) {
+      const rn = b.rate_name ?? '(none)';
+      rateNames[rn] = (rateNames[rn] || 0) + 1;
+      // Any field that looks like it could carry meal-plan / breakfast info
+      for (const k of Object.keys(b)) {
+        const lk = k.toLowerCase();
+        if (lk.includes('meal') || lk.includes('breakfast') || lk.includes('board')
+            || lk.includes('rate') || lk.includes('plan') || lk.includes('extra')
+            || lk.includes('fee') || lk.includes('addon') || lk.includes('add_on')) {
+          otherKeys.add(k);
+        }
+      }
+    }
+    out.rate_names_distribution = rateNames;
+    out.candidate_breakfast_fields = Array.from(otherKeys).sort();
+    out.bookings_total = allBookings.length;
+
     return resp(out);
   } catch (e) {
     out.error = e.message;
