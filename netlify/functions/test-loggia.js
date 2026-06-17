@@ -62,6 +62,37 @@ export async function handler(event) {
     out.candidate_breakfast_fields = Array.from(otherKeys).sort();
     out.bookings_total = allBookings.length;
 
+    // Pick a property_id from the response (or accept ?property_id= override)
+    // to probe the rates + addons + property-summary endpoints — these are
+    // the *definitional* endpoints in the Postman collection; they may
+    // expose meal-plan info that's missing from the bookings response.
+    const probeProp = event.queryStringParameters?.property_id
+      || (Array.isArray(out.bookings?.sample) && out.bookings.sample[0]?.property_id)
+      || null;
+    if (probeProp) {
+      const ratesUrl = `${BASE}/api/lodge/properties/get-active-rates?property_id=${probeProp}&page_id=${encodeURIComponent(p)}`;
+      const rRes = await fetch(ratesUrl, { headers: HDR });
+      const rBody = await safeJson(rRes);
+      out.active_rates = { status: rRes.status, url: ratesUrl, body_keys: keysOf(rBody), sample: sample(rBody) };
+
+      const addonsUrl = `${BASE}/api/lodge/properties/addons?locale=en&page_id=${encodeURIComponent(p)}&property_id=${probeProp}&addon_type=all`;
+      const aRes = await fetch(addonsUrl, { headers: HDR });
+      const aBody = await safeJson(aRes);
+      out.addons = { status: aRes.status, url: addonsUrl, body_keys: keysOf(aBody), sample: sample(aBody) };
+
+      const summaryUrl = `${BASE}/api/lodge/properties/summary?property_id=${probeProp}&locale=en&page_id=${encodeURIComponent(p)}`;
+      const sRes = await fetch(summaryUrl, { headers: HDR });
+      const sBody = await safeJson(sRes);
+      out.summary = { status: sRes.status, url: summaryUrl, body_keys: keysOf(sBody), sample: sample(sBody) };
+
+      const policiesUrl = `${BASE}/api/lodge/properties/policies-data?property_id=${probeProp}&locale=en&viewType=vrbo`;
+      const polRes = await fetch(policiesUrl, { headers: HDR });
+      const polBody = await safeJson(polRes);
+      out.policies = { status: polRes.status, url: policiesUrl, body_keys: keysOf(polBody), sample: sample(polBody) };
+
+      out.probed_property_id = probeProp;
+    }
+
     return resp(out);
   } catch (e) {
     out.error = e.message;
