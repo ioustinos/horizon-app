@@ -161,6 +161,7 @@ export default function StoreForm({ store, onClose, onSaved }) {
                 <option value="hotelizer">Hotelizer</option>
                 <option value="cloudbeds">Cloudbeds</option>
                 <option value="loggia">Loggia</option>
+                <option value="hostaway">Hostaway</option>
                 <option value="other">Other (no booking platform)</option>
               </select>
               <p className="field-hint">
@@ -174,6 +175,8 @@ export default function StoreForm({ store, onClose, onSaved }) {
                   ? 'Cloudbeds uses a per-property API key (cbat_…). Username = the numeric Cloudbeds propertyID; Password = the API key. Generated in Cloudbeds Marketplace → API Credentials.'
                   : form.platform === 'loggia'
                   ? 'Loggia uses a Page ID + API key combo. Username = the numeric Loggia page_id (provided by Loggia); Password = the API key. Sent as x-api-key header on every call.'
+                  : form.platform === 'hostaway'
+                  ? 'Hostaway uses OAuth 2.0 client credentials. Username = the numeric Hostaway account_id; Password = the API key from the Hostaway dashboard (Get API client secret). Horizon caches the issued Bearer token for ~24 months.'
                   : form.platform === 'other'
                   ? 'Rooms will be managed manually — no API sync.'
                   : 'HostHub uses an API key for authentication.'}
@@ -189,6 +192,7 @@ export default function StoreForm({ store, onClose, onSaved }) {
                   : form.platform === 'hotelizer' ? 'Username'
                   : form.platform === 'cloudbeds' ? 'Cloudbeds Property ID'
                   : form.platform === 'loggia' ? 'Loggia Page ID'
+                  : form.platform === 'hostaway' ? 'Hostaway Account ID'
                   : 'API Key Name'}
               </label>
               <input
@@ -200,6 +204,7 @@ export default function StoreForm({ store, onClose, onSaved }) {
                   : form.platform === 'hotelizer' ? 'e.g. username (demo)'
                   : form.platform === 'cloudbeds' ? 'e.g. 320653'
                   : form.platform === 'loggia' ? 'e.g. 4634'
+                  : form.platform === 'hostaway' ? 'e.g. 182649'
                   : 'Username / key identifier'}
               />
               {form.platform === 'webhotelier' && (
@@ -214,6 +219,9 @@ export default function StoreForm({ store, onClose, onSaved }) {
               {form.platform === 'loggia' && (
                 <p className="field-hint">The numeric Loggia <code>page_id</code> issued to your account by Loggia. Used as a query param on every API call.</p>
               )}
+              {form.platform === 'hostaway' && (
+                <p className="field-hint">The numeric Hostaway <code>account_id</code> — visible in the Hostaway dashboard URL after login. Used as the OAuth <code>client_id</code>.</p>
+              )}
             </div>
             )}
             <div className="field-group">
@@ -223,6 +231,7 @@ export default function StoreForm({ store, onClose, onSaved }) {
                   : form.platform === 'hotelizer' ? 'Password'
                   : form.platform === 'cloudbeds' ? 'Cloudbeds API Key (cbat_…)'
                   : form.platform === 'loggia' ? 'Loggia API Key'
+                  : form.platform === 'hostaway' ? 'Hostaway API Key'
                   : 'API Key Secret'}
               </label>
               <input
@@ -235,6 +244,7 @@ export default function StoreForm({ store, onClose, onSaved }) {
                   : form.platform === 'hotelizer' ? 'e.g. pass (demo)'
                   : form.platform === 'cloudbeds' ? 'cbat_xxxxxxxxxxxxxxxxxxxx'
                   : form.platform === 'loggia' ? 'Loggia API key'
+                  : form.platform === 'hostaway' ? 'Hostaway client secret (~64 hex chars)'
                   : 'Password / secret key'}
                 autoComplete="new-password"
               />
@@ -246,6 +256,9 @@ export default function StoreForm({ store, onClose, onSaved }) {
               )}
               {form.platform === 'loggia' && (
                 <p className="field-hint">Provided by Loggia (Webhotelier family). Sent as <code>x-api-key</code> header on every request.</p>
+              )}
+              {form.platform === 'hostaway' && (
+                <p className="field-hint">From the Hostaway dashboard → <em>Get API client secret</em>. Used as the OAuth <code>client_secret</code>; Horizon issues + caches a Bearer token (24-month TTL).</p>
               )}
             </div>
           </div>

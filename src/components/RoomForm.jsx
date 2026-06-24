@@ -156,6 +156,7 @@ export default function RoomForm({ room, onClose, onSaved }) {
                 <option value="hotelizer">Hotelizer</option>
               <option value="cloudbeds">Cloudbeds</option>
               <option value="loggia">Loggia</option>
+              <option value="hostaway">Hostaway</option>
                 <option value="other">Other (manual)</option>
               </select>
               {form.platform === 'other' && (

@@ -7,7 +7,7 @@ const STATUS_COLOR = {
   running: 'log-running',
 }
 
-const PROVIDER_LABEL = { hosthub: 'HostHub', webhotelier: 'WebHotelier', roomrack: 'RoomRack', hotelizer: 'Hotelizer', cloudbeds: 'Cloudbeds', loggia: 'Loggia' }
+const PROVIDER_LABEL = { hosthub: 'HostHub', webhotelier: 'WebHotelier', roomrack: 'RoomRack', hotelizer: 'Hotelizer', cloudbeds: 'Cloudbeds', loggia: 'Loggia', hostaway: 'Hostaway' }
 
 export default function SyncLogs() {
   const [logs, setLogs]         = useState([])
@@ -141,6 +141,7 @@ export default function SyncLogs() {
           <option value="hotelizer">Hotelizer</option>
           <option value="cloudbeds">Cloudbeds</option>
           <option value="loggia">Loggia</option>
+          <option value="hostaway">Hostaway</option>
         </select>
         <select className="filter-select" value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
           <option value="">All statuses</option>
