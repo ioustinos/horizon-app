@@ -747,6 +747,96 @@ export default function Guide() {
           copy the payload + response, and share them — that's almost always enough to diagnose.
         </p>
       </section>
+
+      {/* ── Per-platform reference ───────────────────────────────────────── */}
+      <section id="reference" className="step-section">
+        <div className="h2-row">
+          <span className="h2-badge">i</span>
+          <h2>Per-platform behavior reference</h2>
+        </div>
+        <p className="h2-sub">How each booking platform reports bookings + flags breakfast.</p>
+
+        <p>
+          Every PMS exposes breakfast information differently. This section is the source of truth
+          for what Horizon detects automatically vs. what needs a per-store override, what a
+          booking has to look like to be considered "active", and any platform-specific quirks.
+        </p>
+
+        <h3>HostHub</h3>
+        <ul>
+          <li><strong>Credentials:</strong> single API key (~48 chars) from <em>HostHub Settings → API Keys</em>.</li>
+          <li><strong>Breakfast detection:</strong> per-store keyword allowlist on the booking's free-text <code>meal_plan</code> field. The store's <em>Breakfast — meal-plan keywords</em> setting accepts one keyword per line; a booking is treated as breakfast-included when its <code>meal_plan</code> contains any keyword (case-insensitive substring). <strong>Leave blank for legacy behavior</strong> — every booking is treated as breakfast-included (useful for properties where every rate includes breakfast).</li>
+          <li><strong>Active statuses:</strong> HostHub's native confirmed flag.</li>
+          <li><strong>Quirks:</strong> none significant.</li>
+        </ul>
+
+        <h3>WebHotelier</h3>
+        <ul>
+          <li><strong>Credentials:</strong> property code (username) + API password.</li>
+          <li><strong>Breakfast detection:</strong> OpenTravel-standard board IDs (BB / HB / FB / AI / UAI) auto-detected from the rate plan.</li>
+          <li><strong>Active statuses:</strong> WebHotelier native enum.</li>
+          <li><strong>⚠️ Important limitation:</strong> WebHotelier's API exposes room <em>categories</em>, not physical units. Each booking attributes to a category — so if a property has multiple physical rooms of the same category, Horizon cannot differentiate which physical room a guest is in. <em>Use a different PMS for properties needing per-physical-room validation.</em></li>
+        </ul>
+
+        <h3>RoomRack</h3>
+        <ul>
+          <li><strong>Credentials:</strong> per-property <em>ApiToken</em> (UUID-shape) from PMS at <em>Setup → Device Interface → General API / Partners API</em>.</li>
+          <li><strong>Activation cost:</strong> RoomRack charges <strong>€150 one-time</strong> per property to enable API access. Property pays directly to RoomRack.</li>
+          <li><strong>Breakfast detection:</strong> the <code>board</code> field on each reservation. BB / HB / FB / AI prefix matches plus Greek <em>"πρωιν"</em> free-text fallback.</li>
+          <li><strong>Active statuses:</strong> <em>Cancelled</em> and <em>No-Show</em> → cancelled; everything else → confirmed.</li>
+        </ul>
+
+        <h3>Hotelizer</h3>
+        <ul>
+          <li><strong>Credentials:</strong> per-property HTTP Basic username + password from Hotelizer.</li>
+          <li><strong>Activation cost:</strong> API access is a <strong>separate paid annual subscription</strong> from Hotelizer's standard PMS. Property must email <code>sales@hotelizer.net</code> + <code>support@hotelizer.net</code> to request API access, accept a commercial quote, then Support issues API credentials. <em>User-login credentials from the Hotelizer admin are NOT API credentials — they're separate systems.</em></li>
+          <li><strong>Breakfast detection:</strong> <code>board_types.code</code> on each accommodation row — BB / HB / FB / AI / UAI → true; RR / RO / OB / BO / NB / NONE → false. Greek and English free-text fallback also catches "πρωιν" / "breakfast" / "half board" / etc.</li>
+          <li><strong>Active statuses:</strong> Cancelled / No-Show → cancelled; everything else → confirmed.</li>
+        </ul>
+
+        <h3>Cloudbeds</h3>
+        <ul>
+          <li><strong>Credentials:</strong> <code>cbat_…</code> API key from <em>Cloudbeds Marketplace → API Credentials → Create API Key</em>, with Integration Type = <strong>Point of Sale</strong>. Property also sends their numeric Property ID. See the dedicated "Cloudbeds stores: walking the property through API key creation" section above for full forwardable steps.</li>
+          <li><strong>Breakfast detection:</strong> the reservation's top-level <code>mealPlans</code> field — keyword scan for "breakfast" in any element of the array.</li>
+          <li><strong>Active statuses:</strong> Cloudbeds native enum (confirmed / checked-in / checked-out → confirmed; cancelled / no-show → cancelled).</li>
+          <li><strong>Quirks:</strong> Cloudbeds rate-plan responses have a nested <code>ratePlan.mealPlans</code> on quotes that we deliberately ignore — only the top-level <code>reservation.mealPlans</code> is the saved-booking signal.</li>
+        </ul>
+
+        <h3>Loggia</h3>
+        <ul>
+          <li><strong>Credentials:</strong> numeric Page ID + API key (sent as <code>x-api-key</code> header). Loggia is part of the Webhotelier family.</li>
+          <li><strong>Breakfast detection:</strong> free-text auto-detect on the reservation's <code>rate_name</code>. Catches: <em>breakfast</em>, <em>B&B</em>, <em>bed and breakfast</em>, <em>half board</em>, <em>full board</em>, <em>all incl</em> / <em>all inclusive</em>, the Greek <em>πρωιν</em>, and word-bounded codes BB / HB / FB / AI. <strong>Property must name their breakfast rates with one of these patterns</strong> for auto-detection — e.g. naming a rate "Breakfast Included" works; naming it "First Rate" does not.</li>
+          <li><strong>Active statuses:</strong> native enum; cancellation patterns in the status string flip to cancelled.</li>
+          <li><strong>Quirks:</strong> short-term-rental focused — most production bookings will be room-only. Per-store ALWAYS/NEVER override available for properties that include breakfast on every booking.</li>
+        </ul>
+
+        <h3>Hostaway</h3>
+        <ul>
+          <li><strong>Credentials:</strong> numeric account_id + API key (from Hostaway dashboard → <em>Get API client secret</em>). Horizon uses OAuth client_credentials to issue a Bearer token cached for 24 months.</li>
+          <li><strong>Breakfast detection (4-tier):</strong>
+            <ol>
+              <li>Per-store ALWAYS / NEVER override wins.</li>
+              <li><strong>Listing amenity</strong> (PRIMARY) — at listings-fetch time, Horizon scans Hostaway's amenity catalog and tags listings whose amenity list intersects with the strict breakfast set (<em>Breakfast</em>, id 10 · <em>Meal included</em>, id 319). The ambiguous amenities <em>Breakfast possible</em> (id 218) and <em>Meal delivery</em> (id 278) are deliberately <strong>not</strong> auto-flagged — a property using one of those should set the per-store ALWAYS override.</li>
+              <li><strong>Reservation fee name scan</strong> — any fee named <em>"Breakfast"</em> / <em>"meal included"</em> / <em>"πρωιν"</em> flips breakfast on for that specific booking.</li>
+              <li><strong>Free-text scan</strong> on host/guest notes, comments, and bookingcomSpecialRequests for the same keywords.</li>
+              <li>Default false (vacation-rental baseline).</li>
+            </ol>
+          </li>
+          <li><strong>Active statuses (strict):</strong> only <code>new</code>, <code>modified</code>, and <code>ownerStay</code> → confirmed. Everything else — <code>cancelled</code>, <code>declined</code>, <code>expired</code>, <code>pending</code>, <code>awaiting*</code>, <code>inquiry*</code>, <code>unconfirmed</code>, <code>unknown</code> — → cancelled. A non-null <code>cancellationDate</code> also forces cancelled.</li>
+          <li><strong>Quirks:</strong> short-term-rental focused (Airbnb / Booking.com / Vrbo aggregator). Most Airbnb-channel bookings won't carry native breakfast info unless the property explicitly tags their listing with the Breakfast amenity. Multi-unit listings (one Hostaway listing covering multiple physical units) are deferred — Horizon currently treats each Hostaway listing as a single physical unit.</li>
+        </ul>
+
+        <h3>"Other" (max-pax — no PMS)</h3>
+        <ul>
+          <li><strong>Credentials:</strong> none. Rooms are managed manually with a fixed capacity.</li>
+          <li><strong>Breakfast detection:</strong> bypassed — every booking is treated as breakfast-included up to the room's max capacity per day. Suitable for properties that always serve breakfast and don't need PMS sync.</li>
+          <li><strong>Active statuses:</strong> n/a — there are no bookings synced; validation checks against the max capacity directly.</li>
+        </ul>
+
+        <div className="callout tip">
+          <strong>Per-store ALWAYS / NEVER overrides</strong> (the <em>Breakfast — meal-plan keywords</em> field, where it appears in the Store form) work the same way across every PMS: set the value to <code>ALWAYS</code> to force breakfast=true on every booking for that store, or <code>NEVER</code> to force false. Use these when a property's PMS doesn't carry breakfast info at all but the property knows their rate mix.
+        </div>
+      </section>
     </div>
   )
 }
