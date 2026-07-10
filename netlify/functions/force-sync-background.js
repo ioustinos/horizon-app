@@ -4,7 +4,7 @@
 // Always runs immediately — no interval check. That logic lives only in the cron.
 
 import { createClient } from '@supabase/supabase-js';
-import { syncRoom }  from './sync-bookings.js';
+import { syncRoom }  from './sync-bookings-background.js';
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
