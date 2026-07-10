@@ -162,6 +162,8 @@ export default function StoreForm({ store, onClose, onSaved }) {
                 <option value="cloudbeds">Cloudbeds</option>
                 <option value="loggia">Loggia</option>
                 <option value="hostaway">Hostaway</option>
+                <option value="orange">Orange PMS</option>
+                <option value="lodgify">Lodgify</option>
                 <option value="other">Other (no booking platform)</option>
               </select>
               <p className="field-hint">
@@ -177,6 +179,10 @@ export default function StoreForm({ store, onClose, onSaved }) {
                   ? 'Loggia uses a Page ID + API key combo. Username = the numeric Loggia page_id (provided by Loggia); Password = the API key. Sent as x-api-key header on every call.'
                   : form.platform === 'hostaway'
                   ? 'Hostaway uses OAuth 2.0 client credentials. Username = the numeric Hostaway account_id; Password = the API key from the Hostaway dashboard (Get API client secret). Horizon caches the issued Bearer token for ~24 months.'
+                  : form.platform === 'orange'
+                  ? 'Orange PMS (Coral API) uses Basic Auth (username + password), provided by Marinet. If the account covers several hotels, enter the username as "username:hotelID" (e.g. "wecook:777").'
+                  : form.platform === 'lodgify'
+                  ? 'Lodgify uses a per-account API key sent as X-ApiKey header. The host generates it at Settings → Integrations → Public API → "Find your API key". One key covers all rentals of the account.'
                   : form.platform === 'other'
                   ? 'Rooms will be managed manually — no API sync.'
                   : 'HostHub uses an API key for authentication.'}
@@ -185,7 +191,7 @@ export default function StoreForm({ store, onClose, onSaved }) {
           </div>
           {form.platform !== 'other' && (
           <div className="form-grid">
-            {form.platform !== 'roomrack' && (
+            {form.platform !== 'roomrack' && form.platform !== 'lodgify' && (
             <div className="field-group">
               <label htmlFor="s-key-name">
                 {form.platform === 'webhotelier' ? 'Username / Property Code'
@@ -193,6 +199,7 @@ export default function StoreForm({ store, onClose, onSaved }) {
                   : form.platform === 'cloudbeds' ? 'Cloudbeds Property ID'
                   : form.platform === 'loggia' ? 'Loggia Page ID'
                   : form.platform === 'hostaway' ? 'Hostaway Account ID'
+                  : form.platform === 'orange' ? 'Orange Username'
                   : 'API Key Name'}
               </label>
               <input
@@ -205,6 +212,7 @@ export default function StoreForm({ store, onClose, onSaved }) {
                   : form.platform === 'cloudbeds' ? 'e.g. 320653'
                   : form.platform === 'loggia' ? 'e.g. 4634'
                   : form.platform === 'hostaway' ? 'e.g. 182649'
+                  : form.platform === 'orange' ? 'e.g. wecook  (or wecook:777 for multi-hotel accounts)'
                   : 'Username / key identifier'}
               />
               {form.platform === 'webhotelier' && (
@@ -222,6 +230,9 @@ export default function StoreForm({ store, onClose, onSaved }) {
               {form.platform === 'hostaway' && (
                 <p className="field-hint">The numeric Hostaway <code>account_id</code> — visible in the Hostaway dashboard URL after login. Used as the OAuth <code>client_id</code>.</p>
               )}
+              {form.platform === 'orange' && (
+                <p className="field-hint">API username issued by Marinet. Horizon auto-discovers the hotel ID; append <code>:hotelID</code> only when the account has several hotels.</p>
+              )}
             </div>
             )}
             <div className="field-group">
@@ -232,6 +243,8 @@ export default function StoreForm({ store, onClose, onSaved }) {
                   : form.platform === 'cloudbeds' ? 'Cloudbeds API Key (cbat_…)'
                   : form.platform === 'loggia' ? 'Loggia API Key'
                   : form.platform === 'hostaway' ? 'Hostaway API Key'
+                  : form.platform === 'orange' ? 'Orange Password'
+                  : form.platform === 'lodgify' ? 'Lodgify API Key'
                   : 'API Key Secret'}
               </label>
               <input
@@ -245,6 +258,8 @@ export default function StoreForm({ store, onClose, onSaved }) {
                   : form.platform === 'cloudbeds' ? 'cbat_xxxxxxxxxxxxxxxxxxxx'
                   : form.platform === 'loggia' ? 'Loggia API key'
                   : form.platform === 'hostaway' ? 'Hostaway client secret (~64 hex chars)'
+                  : form.platform === 'orange' ? 'API password'
+                  : form.platform === 'lodgify' ? 'Lodgify account API key'
                   : 'Password / secret key'}
                 autoComplete="new-password"
               />
@@ -259,6 +274,9 @@ export default function StoreForm({ store, onClose, onSaved }) {
               )}
               {form.platform === 'hostaway' && (
                 <p className="field-hint">From the Hostaway dashboard → <em>Get API client secret</em>. Used as the OAuth <code>client_secret</code>; Horizon issues + caches a Bearer token (24-month TTL).</p>
+              )}
+              {form.platform === 'lodgify' && (
+                <p className="field-hint">Generated by the host at Lodgify → Settings → Integrations → Public API → <em>Find your API key</em>. Sent as <code>X-ApiKey</code> header on every request.</p>
               )}
             </div>
           </div>

@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '../supabase'
 
 const STATUS_LABEL = { confirmed: 'Confirmed', cancelled: 'Cancelled' }
-const PROVIDER_LABEL = { hosthub: 'HostHub', webhotelier: 'WebHotelier', roomrack: 'RoomRack', hotelizer: 'Hotelizer', cloudbeds: 'Cloudbeds', loggia: 'Loggia', hostaway: 'Hostaway' }
+const PROVIDER_LABEL = { hosthub: 'HostHub', webhotelier: 'WebHotelier', roomrack: 'RoomRack', hotelizer: 'Hotelizer', cloudbeds: 'Cloudbeds', loggia: 'Loggia', hostaway: 'Hostaway', orange: 'Orange PMS', lodgify: 'Lodgify' }
 
 export default function Bookings() {
   const [bookings, setBookings]     = useState([])
@@ -196,6 +196,8 @@ export default function Bookings() {
             <option value="cloudbeds">Cloudbeds</option>
             <option value="loggia">Loggia</option>
             <option value="hostaway">Hostaway</option>
+            <option value="orange">Orange PMS</option>
+            <option value="lodgify">Lodgify</option>
           </select>
           <select className="filter-select" value={filterStore} onChange={e => {
             const newStore = e.target.value

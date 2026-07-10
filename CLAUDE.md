@@ -1,7 +1,7 @@
 # Horizon — Context for Claude
 
 ## What This App Does
-Breakfast entitlement validator. Syncs hotel bookings from HostHub, WebHotelier, RoomRack, and Hotelizer APIs into Supabase. GonnaOrder calls our validation endpoint to check if breakfast is included for a specific booking.
+Breakfast entitlement validator. Syncs hotel bookings from HostHub, WebHotelier, RoomRack, Hotelizer, Cloudbeds, Loggia, Hostaway, Orange PMS, and Lodgify APIs into Supabase. GonnaOrder calls our validation endpoint to check if breakfast is included for a specific booking.
 
 ## Stack
 - Frontend: React + Vite
@@ -137,6 +137,23 @@ git push origin main                  # auto-deploys via Netlify
 - Breakfast detection: `board_types.code` (BB/HB/FB/AI → true; RR/RO/NB → false; EN/EL free-text fallback).
 - NOTE: the vendor also exposes /guests/grouped, but that is a single-arrival-date guest-registry export (passports/tax data), NOT the booking feed. Use /accommodations.
 
+### Orange PMS (Marinet / Coral API)
+- Base URL: https://hotel.orangepms.com/orange — single-page docs at https://hotel.orangepms.com/api.html
+- Auth: HTTP Basic — `api_key_name` (username, or `username:hotelID` for multi-hotel accounts) + `api_key_secret` (password). Hotel ID auto-discovered via /hotels when the account has exactly one hotel. Demo: `wecook` / hotel 777 ("Zenith Premium Suites"), received from Marinet 2026-07-07.
+- Key endpoints: /hotels, /hotels/{id}/rooms (physical rooms), /reservations?hotel=&departure_from=&arrival_to= (overlap window; dates YYYY-MM-DD both ways; no pagination — 926 rows verified in one response)
+- `room.platform_id` = `RoomNumber`. Sync fetches the whole window once per store per cycle (module cache) and filters client-side — vendor asked for ~1 call/hour, so we do NOT use the server-side `room` filter.
+- Breakfast detection: `MealPlan` field — vendor-confirmed vocabulary ROOM/BB/HB/FB/AI. BB/HB/FB/AI → true; ROOM → false; free-text EN/EL fallback.
+- Status mapping: StatusCode 5 (Cancelled) and 8 (Wait list) → `cancelled` (a non-empty CancellationDate also forces cancelled); 1/2/3/6/7 → `confirmed`.
+
+### Lodgify — ⚠️ UNVERIFIED (no API key yet)
+- Base URLs: https://api.lodgify.com/v1 and /v2 (docs: https://docs.lodgify.com)
+- Auth: `X-ApiKey` header — `api_key_secret` = the per-ACCOUNT key (host generates at Settings → Integrations → Public API); `api_key_name` unused.
+- Key endpoints: /v1/properties (+ /v1/properties/{id}/rooms/{rid} for max_people/units/breakfast_included), /v2/reservations/bookings?includeQuoteDetails=true&stayFilter=Current|Upcoming (NO date-range params; paged 50/page)
+- `room.platform_id` = `propertyId:roomTypeId` — Lodgify bookings identify room TYPES, never physical units (WebHotelier-class limitation; fine for whole-unit rentals, listings with units>1 are marked in Pull Listings).
+- Breakfast detection (per Lodgify product team, 2026-07-10): (1) "Breakfast" add-on in quote.addon_items (OTA bookings never carry add-ons) → (2) room-type `breakfast_included` amenity flag fallback → (3) default false.
+- Status mapping (strict): only `Booked` → `confirmed`; Open/Tentative/Declined, canceled_at, is_deleted → `cancelled`.
+- Rate limits: 600/min (v1), 750/min (v2).
+
 ### GonnaOrder Integration — TWO endpoints (both MUST be configured in GonnaOrder → Settings → Integrations)
 **1. Validation — `POST /api/validate-breakfast`** (called before an order is placed)
 - Identifies breakfast items by `offer.countAgainstSlot >= 1` (top-level orderItems only; modifiers ignored). NOTE: earlier docs said `stockLevel`/`isStockCheckEnabled` — that is outdated; the live code uses `countAgainstSlot`.
@@ -168,6 +185,8 @@ git push origin main                  # auto-deploys via Netlify
 
 ## Changelog / Decisions
 Record every non-trivial change or decision here (and, if it came from or affects a skill, in that skill file too). Newest first.
+
+- **2026-07-10 — Orange PMS + Lodgify integrations.** Orange (Marinet): full 14-touchpoint rollout, demo creds verified (23 rooms, 926 reservations, MealPlan ROOM/BB), batch-and-cache sync to honor the vendor's ~1 call/hour preference. Lodgify: full rollout but **UNVERIFIED** — no API key exists yet (per-account key, host must generate); breakfast = Breakfast add-on → breakfast_included amenity fallback, per Lodgify product-team email 2026-07-10. Migration `expand_platform_provider_checks_for_orange_and_lodgify` applied (all 3 CHECKs). Lodgify platform_id convention: `propertyId:roomTypeId`.
 
 - **2026-05-22 — HIT/Protel (push-based, hybrid).** Capture-only webhook receiver added at `/api/hit-webhook` (`hit-webhook.js`, commit fa4d8f6): logs full headers+body to `webhook_logs`, ACKs, no entity parsing yet. Per the HIT DataExchange spec (v1.0.2 **Draft**, 1 Mar 2024) our receiving URL must use SSL + require auth (Basic OR Token — our choice); to call HIT (pull Hotels, send ACK) we use a Bearer token from `api/identity/token` plus an HIT-issued ApplicationId. Architecture is hybrid: reservations pushed, config (Hotels) pulled. Full parser deferred until HIT activates us / first real payloads land. Spec PDF kept at `HIT-DataExchange-API-2026.pdf`. Blocked on HIT to issue credentials + push.
 - **2026-05-22 — Hotelizer verified end-to-end.** Uses `/accommodations` (range booking feed), NOT `/guests/grouped`. See Hotelizer section.
