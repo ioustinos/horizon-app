@@ -36,8 +36,9 @@ export default function PullListings() {
 
   useEffect(() => { loadData() }, [loadData])
 
+  // Keyed by `${store_id}:${platform_id}` — platform_ids like "101" repeat across stores.
   const roomByPlatformId = Object.fromEntries(
-    rooms.map(f => [f.platform_id, f])
+    rooms.map(f => [`${f.store_id}:${f.platform_id}`, f])
   )
 
   const roomsByStore = useMemo(() => {
@@ -216,7 +217,7 @@ export default function PullListings() {
       const selectedListings = listings.filter(l => sel.has(l.platform_id))
       // Determine which ones still need onboarding into Horizon
       const toInsert = selectedListings
-        .filter(l => !roomByPlatformId[l.platform_id])
+        .filter(l => !roomByPlatformId[`${store.id}:${l.platform_id}`])
         .map(l => ({
           name:         l.name,
           // WebHotelier, RoomRack, and Hotelizer are hotel PMSes — HostHub is short-term rental.
@@ -379,7 +380,7 @@ export default function PullListings() {
                         </thead>
                         <tbody>
                           {ss.listings.map(listing => {
-                            const existing = roomByPlatformId[listing.platform_id]
+                            const existing = roomByPlatformId[`${store.id}:${listing.platform_id}`]
                             const addKey    = `${store.id}:${listing.platform_id}`
                             const updateKey = `update:${existing?.id}`
                             const deleteKey = `delete:${existing?.id}`
@@ -451,7 +452,7 @@ export default function PullListings() {
                         {(() => {
                           const sel = selectedForCreate[store.id]
                           const n = sel?.size || 0
-                          const newOnboards = ss.listings.filter(l => sel?.has(l.platform_id) && !roomByPlatformId[l.platform_id]).length
+                          const newOnboards = ss.listings.filter(l => sel?.has(l.platform_id) && !roomByPlatformId[`${store.id}:${l.platform_id}`]).length
                           if (n === 0) return 'Tick listings to include in a create-mode XLSX (test GonnaOrder stores).'
                           return `${n} selected${newOnboards ? ` — ${newOnboards} will be onboarded as Horizon rooms` : ''}`
                         })()}
