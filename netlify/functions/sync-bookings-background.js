@@ -43,7 +43,7 @@ const PROVIDERS = {
 // Columns we need from the joined `stores` row for any provider.
 // Listing them explicitly keeps the SELECT consistent in both the cron and
 // the manual-trigger path.
-const STORE_FIELDS = 'api_key_name, api_key_secret, meal_plan_breakfast_values';
+const STORE_FIELDS = 'api_key_name, api_key_secret, meal_plan_breakfast_values, bypass_meal_plan_check';
 
 export const handler = async () => {
   // Load settings
