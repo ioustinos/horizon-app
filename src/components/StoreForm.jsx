@@ -30,6 +30,8 @@ export default function StoreForm({ store, onClose, onSaved }) {
     meal_plan_breakfast_values: Array.isArray(store?.meal_plan_breakfast_values)
       ? store.meal_plan_breakfast_values.join('\n')
       : '',
+    // Default true (bypass on) — mirrors the backend default in providers/hosthub.js.
+    bypass_meal_plan_check: store?.bypass_meal_plan_check !== false,
   })
   const [error, setError]   = useState('')
   const [saving, setSaving] = useState(false)
@@ -58,6 +60,7 @@ export default function StoreForm({ store, onClose, onSaved }) {
           .map(s => s.trim())
           .filter(Boolean)
       ),
+      bypass_meal_plan_check: form.bypass_meal_plan_check,
       updated_at:            new Date().toISOString(),
     }
 
@@ -291,11 +294,27 @@ export default function StoreForm({ store, onClose, onSaved }) {
               <em>"BB"</em>, <em>"Half Board"</em>). Add one keyword per line below — a booking is
               treated as breakfast-included when its <code>meal_plan</code> contains
               <strong> any </strong> of these as a substring (case-insensitive).
-              Leave blank to keep the legacy default of treating every HostHub booking as
-              breakfast-included.
+              The keywords are only applied while the checkbox below is ON — when it is OFF,
+              every HostHub booking is treated as breakfast-included regardless of the list.
             </p>
             <div className="form-grid">
               <div className="field-group span-2">
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={!form.bypass_meal_plan_check}
+                    onChange={e => set('bypass_meal_plan_check', !e.target.checked)}
+                    style={{ width: 16, height: 16 }}
+                  />
+                  <span>Check meal-plan text for breakfast keywords</span>
+                </label>
+                <p className="field-hint">
+                  OFF = every booking from this store is marked breakfast-included (legacy default).
+                  ON = only bookings whose <code>meal_plan</code> matches the allowlist below are
+                  marked breakfast-included. Changes apply from the next sync onwards.
+                </p>
+              </div>
+              <div className="field-group span-2" style={!form.bypass_meal_plan_check ? undefined : { opacity: 0.5 }}>
                 <label htmlFor="s-mealplan">Allowlist</label>
                 <textarea
                   id="s-mealplan"
