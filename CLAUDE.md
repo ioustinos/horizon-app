@@ -145,12 +145,12 @@ git push origin main                  # auto-deploys via Netlify
 - Breakfast detection: `MealPlan` field — vendor-confirmed vocabulary ROOM/BB/HB/FB/AI. BB/HB/FB/AI → true; ROOM → false; free-text EN/EL fallback.
 - Status mapping: StatusCode 5 (Cancelled) and 8 (Wait list) → `cancelled` (a non-empty CancellationDate also forces cancelled); 1/2/3/6/7 → `confirmed`.
 
-### Lodgify — ⚠️ UNVERIFIED (no API key yet)
+### Lodgify — partially verified live 2026-07-13 (Nexus Lodges key: listings + bookings + externalBookings shapes confirmed; add-on tier + full E2E order flow still pending)
 - Base URLs: https://api.lodgify.com/v1 and /v2 (docs: https://docs.lodgify.com)
 - Auth: `X-ApiKey` header — `api_key_secret` = the per-ACCOUNT key (host generates at Settings → Integrations → Public API); `api_key_name` unused.
 - Key endpoints: /v1/properties (+ /v1/properties/{id}/rooms/{rid} for max_people/units/breakfast_included), /v2/reservations/bookings?includeQuoteDetails=true&stayFilter=Current|Upcoming (NO date-range params; paged 50/page)
 - `room.platform_id` = `propertyId:roomTypeId` — Lodgify bookings identify room TYPES, never physical units (WebHotelier-class limitation; fine for whole-unit rentals, listings with units>1 are marked in Pull Listings).
-- Breakfast detection (per Lodgify product team, 2026-07-10): (1) "Breakfast" add-on in quote.addon_items (OTA bookings never carry add-ons) → (2) room-type `breakfast_included` amenity flag fallback → (3) default false.
+- Breakfast detection (4-tier): (1) "Breakfast" add-on in quote.addon_items (OTA bookings never carry add-ons) → (2) **OTA MealPlan recovery**: GET /v2/reservations/bookings/{id}/externalBookings returns the raw Booking.com payload incl. free-text `MealPlan` (e.g. "Στην τιμή δωματίου περιλαμβάνεται πρωινό." / "…δεν περιλαμβάνεται κανένα γεύμα"); parsed negation-aware (deny-phrases before allow-keywords). Airbnb payloads have no MealPlan. Verified live 2026-07-13 vs Nexus Lodges booking 21583297 → (3) room-type `breakfast_included` amenity flag → (4) default false.
 - Status mapping (strict): only `Booked` → `confirmed`; Open/Tentative/Declined, canceled_at, is_deleted → `cancelled`.
 - Rate limits: 600/min (v1), 750/min (v2).
 

@@ -28,16 +28,26 @@
 //   module scope, and filter client-side by property_id + room_type_id.
 //   Rate limits: 600 req/min (v1) / 750 req/min (v2) — far above our usage.
 //
-// Breakfast detection (per Lodgify product team, 2026-07-10):
+// Breakfast detection (4-tier; tiers 1-2 verified live 2026-07-13 against
+// the Nexus Lodges account):
 //   1. Booking-level "Breakfast" ADD-ON — an addon quote item whose
 //      description/type mentions breakfast (quote.addon_items[]). OTA
 //      bookings (Airbnb / Booking.com / Vrbo) never carry add-ons through
 //      the channel manager, hence:
-//   2. Room-type-level fallback — the "Breakfast included" amenity flag
+//   2. OTA raw-payload MealPlan — GET /v2/reservations/bookings/{id}/externalBookings
+//      returns the raw channel payload Lodgify received. Booking.com
+//      reservations carry a free-text "MealPlan" in there (e.g.
+//      "Στην τιμή δωματίου περιλαμβάνεται πρωινό." vs "Στην τιμή αυτού του
+//      δωματίου δεν περιλαμβάνεται κανένα γεύμα"). Parsed with a
+//      NEGATION-AWARE matcher (deny-phrases checked before allow-keywords —
+//      the no-meal string still contains the word "γεύμα"). Airbnb payloads
+//      have no MealPlan → tier is skipped. One extra API call per booking,
+//      cached by `${id}:${updated_at}` (rate limit 750/min, we do dozens).
+//   3. Room-type-level fallback — the "Breakfast included" amenity flag
 //      (breakfast_included boolean on /v1/properties/{id}/rooms/{rid},
 //      set in Dashboard → Rentals → Overview → Amenities). Cached per
 //      room type at sync time.
-//   3. Default false.
+//   4. Default false.
 //
 // Status mapping: status ∈ { Open, Tentative, Booked, Declined }.
 //   Only 'Booked' → 'confirmed'. Declined / Open / Tentative (enquiries and
@@ -60,6 +70,8 @@ const PAGE_SIZE = 50;
 //   roomBreakfastCache: `${apiKeyPrefix}:${pid}:${rid}` → boolean|null
 const bookingsCache = new Map();
 const roomBreakfastCache = new Map();
+// `${bookingId}:${updated_at}` → string|null (raw MealPlan text from the OTA payload)
+const externalMealPlanCache = new Map();
 
 async function lodgifyGet(url, apiKey) {
   const res = await fetch(url, {
@@ -124,7 +136,44 @@ function bookingHasBreakfastAddon(booking) {
   return false;
 }
 
-// Tier-2: room-type-level "Breakfast included" amenity flag.
+// Tier-2: MealPlan free-text from the raw OTA payload (Booking.com keeps it
+// even though Lodgify's own UI drops it). Returns the raw text or null.
+async function fetchExternalMealPlan(apiKey, booking) {
+  const cacheKey = `${booking.id}:${booking.updated_at || ''}`;
+  if (externalMealPlanCache.has(cacheKey)) return externalMealPlanCache.get(cacheKey);
+  let text = null;
+  try {
+    const data = await lodgifyGet(`${V2}/reservations/bookings/${booking.id}/externalBookings`, apiKey);
+    const all = (Array.isArray(data?.external_bookings) ? data.external_bookings : [])
+      .map(e => String(e?.content || '')).join(' ');
+    const m = all.match(/"MealPlan"\s*:\s*"([^"]*)"/);
+    text = m ? m[1] : null;
+  } catch { text = null; }  // fail closed — missing data must not grant breakfast
+  externalMealPlanCache.set(cacheKey, text);
+  return text;
+}
+
+// Negation-aware breakfast matcher for OTA MealPlan free text (EL + EN).
+// Deny-phrases are checked FIRST because negative strings still contain
+// meal words ("δεν περιλαμβάνεται κανένα γεύμα", "breakfast at extra charge").
+function mealPlanTextIncludesBreakfast(text) {
+  if (!text) return false;
+  const lower = String(text).toLowerCase();
+  const deny = [
+    'δεν περιλαμβ', 'κανένα γεύμα', 'κανενα γευμα', 'χωρίς πρωιν', 'χωρις πρωιν',
+    'έναντι χρέωσης', 'εναντι χρεωσης', 'επιπλέον χρέωση', 'επιπλεον χρεωση',
+    'not includ', 'no meal', 'without breakfast', 'extra charge', 'extra cost',
+    'available for purchase', 'can be purchased',
+  ];
+  if (deny.some(p => lower.includes(p))) return false;
+  const allow = [
+    'πρωιν', 'ημιδιατροφ', 'πλήρης διατροφ', 'πληρης διατροφ',
+    'breakfast', 'half board', 'full board', 'all incl', 'all-incl',
+  ];
+  return allow.some(p => lower.includes(p));
+}
+
+// Tier-3: room-type-level "Breakfast included" amenity flag.
 async function roomTypeBreakfastFlag(apiKey, propertyId, roomTypeId) {
   const cacheKey = `${apiKey.slice(0, 8)}:${propertyId}:${roomTypeId}`;
   if (roomBreakfastCache.has(cacheKey)) return roomBreakfastCache.get(cacheKey);
@@ -175,6 +224,17 @@ export async function syncLodgify(room, { lookbackDays, forwardDays }) {
 
     const typeFlag = await roomTypeBreakfastFlag(apiKey, ids.propertyId, ids.roomTypeId);
 
+    // Pre-resolve tier-2 (external OTA MealPlan) for bookings that don't
+    // already match on the add-on — transformFn below must stay synchronous.
+    const externalBreakfast = new Map();  // booking.id → boolean
+    for (const b of ours) {
+      if (bookingHasBreakfastAddon(b)) continue;
+      const src = String(b?.source || '').toLowerCase();
+      if (src === 'manual' || src === 'oh' || src === 'publicapi') continue;  // direct bookings have no OTA payload
+      const text = await fetchExternalMealPlan(apiKey, b);
+      if (text != null) externalBreakfast.set(b.id, mealPlanTextIncludesBreakfast(text));
+    }
+
     const rawResponse = {
       window: { from: fromIso, to: toIso },
       total_bookings_in_response: allBookings.length,
@@ -202,7 +262,7 @@ export async function syncLodgify(room, { lookbackDays, forwardDays }) {
         check_in:           String(b.arrival || '').slice(0, 10),
         check_out:          String(b.departure || '').slice(0, 10),
         guest_count:        guests,
-        breakfast_included: bookingHasBreakfastAddon(b) || typeFlag,
+        breakfast_included: bookingHasBreakfastAddon(b) || externalBreakfast.get(b.id) === true || typeFlag,
         status:             cancelled ? 'cancelled' : 'confirmed',
         raw_data:           b,
       };
