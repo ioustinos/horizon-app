@@ -162,8 +162,9 @@ function mealPlanTextIncludesBreakfast(text) {
   const deny = [
     'δεν περιλαμβ', 'κανένα γεύμα', 'κανενα γευμα', 'χωρίς πρωιν', 'χωρις πρωιν',
     'έναντι χρέωσης', 'εναντι χρεωσης', 'επιπλέον χρέωση', 'επιπλεον χρεωση',
+    'κοστίζει', 'κοστιζει', 'διατίθεται', 'διατιθεται',
     'not includ', 'no meal', 'without breakfast', 'extra charge', 'extra cost',
-    'available for purchase', 'can be purchased',
+    'costs ', 'is available at', 'available for purchase', 'can be purchased',
   ];
   if (deny.some(p => lower.includes(p))) return false;
   const allow = [
