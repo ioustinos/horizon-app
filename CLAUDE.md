@@ -70,6 +70,13 @@ git push origin main                  # auto-deploys via Netlify
 │   ├── after-order.js          # GonnaOrder lifecycle webhook (consume on ORDER_SUBMITTED)
 │   ├── hit-webhook.js          # HIT DataExchange push receiver (capture-only scaffold)
 │   ├── test-hosthub.js         # Diagnostic: test HostHub API auth
+│   ├── guest-messaging-background.js # Hourly scheduled sweep: WhatsApp reminders + review requests
+│   ├── force-messaging.js      # Manual sweep trigger (x-messaging-key header guard)
+│   ├── whatsapp-inbound.js     # Twilio inbound webhook: ratings, STOP, free-text feedback
+│   ├── whatsapp-status.js      # Twilio status callbacks + SMS fallback on failed reminders
+│   ├── messaging/              # Guest-messaging internals (not exposed as functions)
+│   │   ├── _shared.js          # Twilio REST via fetch, signature validation, phone/time helpers
+│   │   └── engine.js           # Audience selection: simple+stop reminder rule, review requests
 │   └── providers/              # One file per booking platform
 │       ├── _shared.js          # supabase + upsertBookings/log helpers
 │       ├── hosthub.js          # HostHub sync + listings
@@ -83,6 +90,8 @@ git push origin main                  # auto-deploys via Netlify
 │   │   ├── SyncLogs.jsx        # Sync history
 │   │   ├── PullListings.jsx    # Onboard listings from platforms
 │   │   ├── TestWebhook.jsx     # Test validation endpoint
+│   │   ├── GuestMessages.jsx   # WhatsApp/SMS message log (incl. dry-run preview)
+│   │   ├── Reviews.jsx         # Breakfast ratings + private feedback
 │   │   ├── Stores.jsx          # Store management
 │   │   ├── Settings.jsx        # App settings
 │   │   ├── AdminLayout.jsx     # Sidebar + layout
@@ -95,6 +104,9 @@ git push origin main                  # auto-deploys via Netlify
 │   ├── supabase.js
 │   ├── App.jsx
 │   └── index.css
+├── docs/
+│   ├── twilio-whatsapp-setup-guide.md   # Full manual setup guide (Twilio account → templates)
+│   └── whatsapp-messaging-handoff.md    # Decisions + findings from the 2026-08-06 planning session
 ├── netlify.toml
 ├── package.json
 └── vite.config.js
@@ -165,9 +177,43 @@ git push origin main                  # auto-deploys via Netlify
 - Maps GonnaOrder events → `orders.status`: ORDER_SUBMITTED/RECEIVED → `submitted` (consume); ORDER_CLOSED/COMPLETED → `fulfilled`; ORDER_CANCELLED/REJECTED → `cancelled` (release). Idempotent, latest-event-wins.
 - The double-order check in `validate-breakfast` counts only `submitted` + `fulfilled`. **If the after-order endpoint is not wired in GonnaOrder, slots are never consumed and repeat-order protection is inert.**
 
+## Guest Messaging (Twilio WhatsApp/SMS) — added 2026-08-06
+Breakfast reminders + review collection over WhatsApp. Full manual setup guide:
+`docs/twilio-whatsapp-setup-guide.md`; decisions/context: `docs/whatsapp-messaging-handoff.md`.
+
+- **Safe-by-default:** no Twilio env vars → the hourly sweep runs in **dry-run** (audience
+  logged to `guest_messages` with status `dry_run`, nothing sent). Per-store master switch
+  `stores.messaging_enabled` defaults to **false**.
+- **Reminder rule ("simple + stop"):** at `stores.reminder_send_hour` (Athens), phones with a
+  real order (`submitted`/`fulfilled`) whose `wish_date` is within the last 2 days, no order
+  for tomorrow, <2 reminders since their last order, not opted out, none sent today.
+  Phone source: `orders.raw_payload.customerPhoneNumber` (present on 100% of orders).
+- **Review flow:** at `stores.review_send_hour` (Athens), one `review_request` (quick-reply
+  rate_1/2/3) per phone per 30 days for phones with an order for today. Rating 3 → session
+  reply with `stores.google_review_link`; 1–2 → "what went wrong?" captured privately in
+  `reviews.comment`. Inbound param for the button id is read as ButtonPayload → Payload →
+  ButtonText (VERIFY against the first real tap — full payload is logged in
+  `guest_messages.meta.twilio_params`).
+- **Language:** phone starts with +30 → Greek template, else English (EN Content SID falls
+  back to GR if unset).
+- **STOP:** stop/unsubscribe/cancel/στοπ/διαγραφή → `message_optouts` (global per phone).
+- **SMS fallback:** WhatsApp reminder `failed`/`undelivered` → one plain SMS with the store's
+  `public_link` (needs `TWILIO_SMS_FROM`). Review requests have no SMS fallback (buttons
+  don't work over SMS).
+- **Webhooks:** point Twilio at the DIRECT paths (`/.netlify/functions/whatsapp-inbound`,
+  `.../whatsapp-status`), NOT `/api/*` redirects — signature validation covers the exact URL.
+  Signature validation auto-skips (with console warning) while `TWILIO_AUTH_TOKEN` is unset.
+- **Manual test:** `POST /.netlify/functions/force-messaging` with header
+  `x-messaging-key: $MESSAGING_FORCE_KEY` and optional body `{"hour":18,"storeId":"…"}`.
+- **Error 63016** = free-form message attempted outside the 24h session window.
+- **Go-live:** Ioustinos' manual phases (Twilio account, sender registration, template
+  approval) are in the docs/ guide; then set the env vars below and flip
+  `messaging_enabled` per store.
+
 ## Supabase
 - Project: horizon (project ID: gdreamjjadijdfoeymok)
-- Tables: stores, rooms (was facilities), room_mappings, bookings, orders, sync_logs, settings
+- Tables: stores, rooms (was facilities), room_mappings, bookings, orders, sync_logs, settings, webhook_logs, guest_messages, reviews, message_optouts
+- Messaging columns on stores: messaging_enabled (default false), reminder_send_hour (default 18), review_send_hour (default 19), google_review_link
 - Key columns renamed: room_type (was facility_type), platform_id (was external_id)
 - FK columns: room_id (was facility_id) in bookings, orders, sync_logs, room_mappings
 - Env vars: SUPABASE_URL, SUPABASE_SERVICE_KEY set on Netlify
@@ -176,6 +222,12 @@ git push origin main                  # auto-deploys via Netlify
 - SUPABASE_URL
 - SUPABASE_SERVICE_KEY
 - HOSTHUB_API_KEY (demo key — needs to be verified)
+- Guest messaging (all UNSET until Twilio go-live; feature dry-runs without them):
+  - TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN (auth token also validates webhook signatures)
+  - TWILIO_API_KEY_SID, TWILIO_API_KEY_SECRET (optional, preferred over auth token for API calls)
+  - TWILIO_WHATSAPP_FROM (e.g. `whatsapp:+14155238886` sandbox), TWILIO_SMS_FROM
+  - TPL_BREAKFAST_REMINDER, TPL_BREAKFAST_REMINDER_EN, TPL_REVIEW_REQUEST, TPL_REVIEW_REQUEST_EN (Content SIDs HX…)
+  - MESSAGING_FORCE_KEY (shared secret for the force-messaging test endpoint)
 
 ## Naming Convention
 - "Room" = any accommodation unit (hotel room, Airbnb rental, etc.) — previously called "Facility"
@@ -185,6 +237,16 @@ git push origin main                  # auto-deploys via Netlify
 
 ## Changelog / Decisions
 Record every non-trivial change or decision here (and, if it came from or affects a skill, in that skill file too). Newest first.
+
+- **2026-08-06 — Guest messaging feature (Twilio WhatsApp/SMS).** Full backend + admin UI
+  built ahead of Twilio account creation: migration `guest_messaging_and_reviews`
+  (guest_messages / reviews / message_optouts + store messaging columns), hourly
+  `guest-messaging-background` sweep (per-store Athens send hours; simple+stop reminder
+  rule; review requests evening of wish_date), `whatsapp-inbound` (ratings, STOP,
+  private feedback), `whatsapp-status` (delivery tracking + SMS fallback),
+  `force-messaging` test trigger, GuestMessages + Reviews admin pages, StoreForm
+  messaging section. Dry-run until Twilio env vars exist. Twilio uses raw fetch — no SDK
+  dependency added. See "Guest Messaging" section + docs/.
 
 - **2026-07-10 — Orange PMS + Lodgify integrations.** Orange (Marinet): full 14-touchpoint rollout, demo creds verified (23 rooms, 926 reservations, MealPlan ROOM/BB), batch-and-cache sync to honor the vendor's ~1 call/hour preference. Lodgify: full rollout but **UNVERIFIED** — no API key exists yet (per-account key, host must generate); breakfast = Breakfast add-on → breakfast_included amenity fallback, per Lodgify product-team email 2026-07-10. Migration `expand_platform_provider_checks_for_orange_and_lodgify` applied (all 3 CHECKs). Lodgify platform_id convention: `propertyId:roomTypeId`.
 

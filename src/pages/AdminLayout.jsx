@@ -57,6 +57,16 @@ export default function AdminLayout() {
             Listings Sync
           </NavLink>
 
+          <p className="nav-section-label" style={{ marginTop: '1rem' }}>Messaging</p>
+          <NavLink to="/admin/guest-messages" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
+            <span className="nav-link-icon" aria-hidden="true">💬</span>
+            Guest Messages
+          </NavLink>
+          <NavLink to="/admin/reviews" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
+            <span className="nav-link-icon" aria-hidden="true">⭐</span>
+            Reviews
+          </NavLink>
+
           <p className="nav-section-label" style={{ marginTop: '1rem' }}>Testing</p>
           <NavLink to="/admin/test-webhook" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
             <svg viewBox="0 0 20 20" fill="currentColor" width="17" height="17">

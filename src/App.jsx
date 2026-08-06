@@ -12,6 +12,8 @@ import PullListings    from './pages/PullListings'
 import Guide           from './pages/Guide'
 import WebhookLogs     from './pages/WebhookLogs'
 import TestWebhook     from './pages/TestWebhook'
+import GuestMessages   from './pages/GuestMessages'
+import Reviews         from './pages/Reviews'
 
 export default function App() {
   return (
@@ -35,6 +37,8 @@ export default function App() {
             <Route path="pull-listings" element={<PullListings />} />
             <Route path="guide" element={<Guide />} />
             <Route path="webhook-logs" element={<WebhookLogs />} />
+            <Route path="guest-messages" element={<GuestMessages />} />
+            <Route path="reviews" element={<Reviews />} />
             <Route path="settings"      element={<Settings />} />
             <Route path="test-webhook"  element={<TestWebhook />} />
           </Route>

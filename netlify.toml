@@ -6,6 +6,13 @@
 [functions."sync-bookings-background"]
   schedule = "*/5 * * * *"
 
+# Hourly guest-messaging sweep (WhatsApp breakfast reminders + review
+# requests). Fires every hour UTC; the function translates to Europe/Athens
+# and only acts on stores whose configured send hour matches. Dry-run only
+# until Twilio env vars are set.
+[functions."guest-messaging-background"]
+  schedule = "0 * * * *"
+
 [dev]
   command = "npm run dev"
   port = 8888

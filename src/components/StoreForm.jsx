@@ -32,6 +32,11 @@ export default function StoreForm({ store, onClose, onSaved }) {
       : '',
     // Default true (bypass on) — mirrors the backend default in providers/hosthub.js.
     bypass_meal_plan_check: store?.bypass_meal_plan_check !== false,
+    // Guest messaging (WhatsApp/SMS via Twilio) — default off.
+    messaging_enabled:  store?.messaging_enabled === true,
+    reminder_send_hour: store?.reminder_send_hour ?? 18,
+    review_send_hour:   store?.review_send_hour ?? 19,
+    google_review_link: store?.google_review_link || '',
   })
   const [error, setError]   = useState('')
   const [saving, setSaving] = useState(false)
@@ -61,6 +66,10 @@ export default function StoreForm({ store, onClose, onSaved }) {
           .filter(Boolean)
       ),
       bypass_meal_plan_check: form.bypass_meal_plan_check,
+      messaging_enabled:      form.messaging_enabled,
+      reminder_send_hour:     Number(form.reminder_send_hour),
+      review_send_hour:       Number(form.review_send_hour),
+      google_review_link:     form.google_review_link.trim() || null,
       updated_at:            new Date().toISOString(),
     }
 
@@ -333,6 +342,85 @@ export default function StoreForm({ store, onClose, onSaved }) {
             </div>
             </>
           )}
+
+          {/* ── Guest Messaging (WhatsApp / SMS) ── */}
+          <h3 className="form-section-title">Guest Messaging — WhatsApp / SMS</h3>
+          <p className="form-section-hint">
+            Daily breakfast reminders and post-breakfast review requests sent to guests
+            over WhatsApp (Twilio), with SMS fallback. Nothing is sent while Twilio
+            isn't configured — the hourly job only logs a dry-run preview of who
+            <em> would </em> receive a message.
+          </p>
+          <div className="form-grid">
+            <div className="field-group span-2">
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={form.messaging_enabled}
+                  onChange={e => set('messaging_enabled', e.target.checked)}
+                  style={{ width: 16, height: 16 }}
+                />
+                <span>Enable guest messaging for this store</span>
+              </label>
+              <p className="field-hint">
+                Master switch. OFF = this store is completely excluded from reminders and
+                review requests.
+              </p>
+            </div>
+          </div>
+          <div className="form-grid" style={form.messaging_enabled ? undefined : { opacity: 0.5 }}>
+            <div className="field-group">
+              <label htmlFor="s-reminder-hour">Reminder send hour</label>
+              <select
+                id="s-reminder-hour"
+                value={form.reminder_send_hour}
+                onChange={e => set('reminder_send_hour', e.target.value)}
+                disabled={!form.messaging_enabled}
+              >
+                {Array.from({ length: 24 }, (_, h) => (
+                  <option key={h} value={h}>{String(h).padStart(2, '0')}:00</option>
+                ))}
+              </select>
+              <p className="field-hint">
+                Athens time. When the daily "order breakfast for tomorrow?" reminder goes
+                out — keep it before the store's order cutoff.
+              </p>
+            </div>
+            <div className="field-group">
+              <label htmlFor="s-review-hour">Review request send hour</label>
+              <select
+                id="s-review-hour"
+                value={form.review_send_hour}
+                onChange={e => set('review_send_hour', e.target.value)}
+                disabled={!form.messaging_enabled}
+              >
+                {Array.from({ length: 24 }, (_, h) => (
+                  <option key={h} value={h}>{String(h).padStart(2, '0')}:00</option>
+                ))}
+              </select>
+              <p className="field-hint">
+                Athens time. When the "how was your breakfast today?" rating message goes
+                out, on the evening of the breakfast day.
+              </p>
+            </div>
+          </div>
+          <div className="form-grid" style={form.messaging_enabled ? undefined : { opacity: 0.5 }}>
+            <div className="field-group span-2">
+              <label htmlFor="s-google-review">Google review link</label>
+              <input
+                id="s-google-review"
+                type="url"
+                value={form.google_review_link}
+                onChange={e => set('google_review_link', e.target.value)}
+                placeholder="https://g.page/r/..."
+                disabled={!form.messaging_enabled}
+              />
+              <p className="field-hint">
+                Sent to guests who rate their breakfast 😍 — get it from the hotel's
+                Google Business Profile ("Ask for reviews" share link).
+              </p>
+            </div>
+          </div>
 
           {error && <p className="form-error">{error}</p>}
 
