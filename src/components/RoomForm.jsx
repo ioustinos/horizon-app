@@ -11,6 +11,36 @@ const EMPTY = {
   store_id: '',
 }
 
+const PLATFORM_LABEL = {
+  hosthub: 'HostHub',
+  webhotelier: 'WebHotelier',
+  roomrack: 'RoomRack',
+  hotelizer: 'Hotelizer',
+  cloudbeds: 'Cloudbeds',
+  loggia: 'Loggia',
+  hostaway: 'Hostaway',
+  orange: 'Orange PMS',
+  lodgify: 'Lodgify',
+  other: 'Manual (no platform)',
+}
+
+function PlatformOptions() {
+  return (
+    <>
+      <option value="hosthub">HostHub</option>
+      <option value="webhotelier">WebHotelier</option>
+      <option value="roomrack">RoomRack</option>
+      <option value="hotelizer">Hotelizer</option>
+      <option value="cloudbeds">Cloudbeds</option>
+      <option value="loggia">Loggia</option>
+      <option value="hostaway">Hostaway</option>
+      <option value="orange">Orange PMS</option>
+      <option value="lodgify">Lodgify</option>
+      <option value="other">Other (manual)</option>
+    </>
+  )
+}
+
 export default function RoomForm({ room, onClose, onSaved }) {
   const isEdit = !!room
   const [form, setForm] = useState(isEdit ? {
@@ -27,24 +57,43 @@ export default function RoomForm({ room, onClose, onSaved }) {
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
-    supabase.from('stores').select('id, name').order('name').then(({ data }) => {
+    // Platform is needed here too — selecting a store now drives (inherits)
+    // this room's platform, since API credentials live on the store.
+    supabase.from('stores').select('id, name, platform').order('name').then(({ data }) => {
       setStores(data || [])
     })
   }, [])
 
   const isOther = form.room_type === 'other_max_pax'
+  const linkedStore = stores.find(s => s.id === form.store_id) || null
 
   function set(field, value) {
     setForm(f => {
       const next = { ...f, [field]: value }
+
       if (field === 'room_type') {
         if (value === 'other_max_pax') {
           next.platform = 'other'
           next.platform_id = ''
         } else if (f.room_type === 'other_max_pax') {
-          next.platform = 'hosthub'
+          // Leaving "Other (Max Pax)" — fall back to the linked store's
+          // platform if there is one, otherwise the old hosthub default.
+          const store = stores.find(s => s.id === next.store_id)
+          next.platform = store?.platform || 'hosthub'
         }
       }
+
+      // Platform is inherited from the linked store — API credentials are
+      // managed at the Store level, so a room's platform must match its
+      // store's platform for sync to route to the right provider. Picking
+      // (or clearing) a store here keeps that in sync automatically.
+      if (field === 'store_id' && next.room_type !== 'other_max_pax') {
+        if (value) {
+          const store = stores.find(s => s.id === value)
+          if (store) next.platform = store.platform
+        }
+      }
+
       return next
     })
   }
@@ -146,26 +195,20 @@ export default function RoomForm({ room, onClose, onSaved }) {
                 <option value="other_max_pax">Other (Max Pax)</option>
               </select>
             </div>
-            {!isOther && (
             <div className="field-group">
-              <label htmlFor="f-platform">Platform <span className="required">*</span></label>
-              <select id="f-platform" value={form.platform} onChange={e => set('platform', e.target.value)}>
-                <option value="hosthub">HostHub</option>
-                <option value="webhotelier">WebHotelier</option>
-                <option value="roomrack">RoomRack</option>
-                <option value="hotelizer">Hotelizer</option>
-              <option value="cloudbeds">Cloudbeds</option>
-              <option value="loggia">Loggia</option>
-              <option value="hostaway">Hostaway</option>
-              <option value="orange">Orange PMS</option>
-              <option value="lodgify">Lodgify</option>
-                <option value="other">Other (manual)</option>
+              <label htmlFor="f-store">Linked Store</label>
+              <select id="f-store" value={form.store_id} onChange={e => set('store_id', e.target.value)}>
+                <option value="">— No store linked —</option>
+                {stores.map(s => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
               </select>
-              {form.platform === 'other' && (
-                <p className="field-hint">No API sync — breakfast count equals max capacity every day.</p>
-              )}
+              <p className="field-hint">
+                {isOther
+                  ? 'The GonnaOrder store that serves this room.'
+                  : 'The GonnaOrder store that serves this room. Its Platform is inherited below.'}
+              </p>
             </div>
-            )}
           </div>
 
           {/* ── Platform ── */}
@@ -176,7 +219,26 @@ export default function RoomForm({ room, onClose, onSaved }) {
             API credentials are managed at the Store level and shared across all its rooms.
           </p>
           <div className="form-grid">
-            <div className="field-group span-2">
+            <div className="field-group">
+              <label>Platform</label>
+              {linkedStore ? (
+                <div>
+                  <span className={`badge badge-platform ${form.platform}`}>{PLATFORM_LABEL[form.platform]}</span>
+                  <p className="field-hint">
+                    Inherited from <strong>{linkedStore.name}</strong>. To change it, edit that store's
+                    Platform &amp; API Credentials — every room linked to it shares the same platform.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <select id="f-platform" value={form.platform} onChange={e => set('platform', e.target.value)}>
+                    <PlatformOptions />
+                  </select>
+                  <p className="field-hint">No store linked, so pick the platform manually. Link a store above to have this follow it automatically.</p>
+                </>
+              )}
+            </div>
+            <div className="field-group">
               <label htmlFor="f-platform-id">Platform ID</label>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <input
@@ -201,6 +263,28 @@ export default function RoomForm({ room, onClose, onSaved }) {
               <p className="field-hint">The property/room ID as it appears in the booking platform (e.g. the rental ID from the HostHub URL, the room code from WebHotelier, or the room number from RoomRack). <strong>Use this value as the External ID in GonnaOrder</strong> to link this room.</p>
             </div>
           </div>
+          </>
+          )}
+
+          {form.platform === 'other' && !isOther && (
+          <>
+          <h3 className="form-section-title">Platform</h3>
+          {linkedStore ? (
+            <p className="form-section-hint">
+              Inherited from <strong>{linkedStore.name}</strong>: {PLATFORM_LABEL.other} — no API sync,
+              breakfast count equals max capacity every day.
+            </p>
+          ) : (
+            <div className="form-grid">
+              <div className="field-group">
+                <label htmlFor="f-platform-manual">Platform</label>
+                <select id="f-platform-manual" value={form.platform} onChange={e => set('platform', e.target.value)}>
+                  <PlatformOptions />
+                </select>
+                <p className="field-hint">No store linked, so pick the platform manually. No API sync — breakfast count equals max capacity every day.</p>
+              </div>
+            </div>
+          )}
           </>
           )}
 
@@ -250,21 +334,6 @@ export default function RoomForm({ room, onClose, onSaved }) {
                   ? 'Daily breakfast allowance — this is the maximum number of breakfasts validated each day.'
                   : 'Maximum number of guests = maximum breakfasts served.'}
               </p>
-            </div>
-          </div>
-
-          {/* ── Internal ── */}
-          <h3 className="form-section-title">Internal Settings</h3>
-          <div className="form-grid">
-            <div className="field-group">
-              <label htmlFor="f-store">Linked Store</label>
-              <select id="f-store" value={form.store_id} onChange={e => set('store_id', e.target.value)}>
-                <option value="">— No store linked —</option>
-                {stores.map(s => (
-                  <option key={s.id} value={s.id}>{s.name}</option>
-                ))}
-              </select>
-              <p className="field-hint">The GonnaOrder store that serves this room.</p>
             </div>
           </div>
 

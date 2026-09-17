@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '../supabase'
 import RoomForm from '../components/RoomForm'
+import BulkRoomUpload from '../components/BulkRoomUpload'
 
 
 // Inline ID + copy-to-clipboard chip used in the rooms table.
@@ -41,6 +42,7 @@ export default function Rooms() {
   const [sortKey, setSortKey]       = useState('name')
   const [sortDir, setSortDir]       = useState('asc')
   const [showForm, setShowForm]     = useState(false)
+  const [showBulkUpload, setShowBulkUpload] = useState(false)
   const [editTarget, setEditTarget] = useState(null)
   const [syncingId, setSyncingId]   = useState(null)
   const [syncResults, setSyncResults] = useState({})
@@ -179,7 +181,10 @@ export default function Rooms() {
           <h1 className="page-title">Rooms</h1>
           <p className="page-subtitle">Hotels, Airbnbs, and other rooms connected to Horizon</p>
         </div>
-        <button className="btn btn-primary" onClick={openCreate}>+ New Room</button>
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <button className="btn btn-secondary" onClick={() => setShowBulkUpload(true)}>⬆ Bulk Upload</button>
+          <button className="btn btn-primary" onClick={openCreate}>+ New Room</button>
+        </div>
       </div>
 
       <div className="toolbar">
@@ -325,6 +330,13 @@ export default function Rooms() {
           room={editTarget}
           onClose={() => setShowForm(false)}
           onSaved={() => { setShowForm(false); fetchRooms() }}
+        />
+      )}
+
+      {showBulkUpload && (
+        <BulkRoomUpload
+          onClose={() => setShowBulkUpload(false)}
+          onImported={fetchRooms}
         />
       )}
     </div>

@@ -59,6 +59,7 @@ git push origin main                  # auto-deploys via Netlify
   pattern. Don't try to reuse a stale `/tmp/horizon-pushN` from a previous chat.
 - The workspace folder will go out of sync with `origin/main` over time. That's
   expected. The `/tmp/horizon-pushN` clone is the source of truth for git ops.
+- The same FUSE unlink() block can hit `npm install` (leftover package files) and `npm run build` (can't empty a pre-existing `dist/`) inside the workspace — not just git. If `npm run build` fails with `EPERM: operation not permitted, unlink`, it's this, not a code problem: verify with `npx vite build --outDir /tmp/some-dir` instead. Netlify builds fresh in its own environment on every push, so this never affects production.
 
 ## Repo Structure
 ```
@@ -237,6 +238,9 @@ Breakfast reminders + review collection over WhatsApp. Full manual setup guide:
 
 ## Changelog / Decisions
 Record every non-trivial change or decision here (and, if it came from or affects a skill, in that skill file too). Newest first.
+
+- **2026-09-17 — Bulk room upload via Excel.** Added `src/lib/roomBulkUpload.js` + `src/components/BulkRoomUpload.jsx`, wired to a new "⬆ Bulk Upload" button on the Rooms page. Flow: pick a Store (or "manual" + a platform) → download a sample `.xlsx` tailored to that store/platform (Instructions sheet + a Rooms sheet with just Room Name / Secondary Name / Room Type / Platform ID / Max Capacity — no Store or Platform column, since one file always shares a single store+platform) → fill it in → upload it back → review a per-row validated preview (ready / warning / error, with duplicate-Platform-ID detection against existing rooms and within the file) → bulk-insert only the checked rows. Reuses the existing `xlsx` package and the `downloadXlsxBuffer` / `safeFilenameSegment` helpers already in `gonnaorderExport.js`.
+- **2026-09-17 — Room platform now inherits from the linked Store.** `RoomForm.jsx` used to let you pick a room's `platform` independently of its `store_id`, defaulting to `hosthub` regardless of the store actually linked. Risky: `syncRoom()` in `sync-bookings.js` dispatches purely on `room.platform`, while the API credentials it uses come from the joined store — a mismatch would silently run the wrong provider against that store's credentials. Verified via SQL before changing anything: 0 of 417 linked rooms had a `platform` different from their store's (rooms are almost always created through PullListings' auto-onboarding, which already sets `platform` from the listing — the gap only bit manually-created rooms). Fixed going forward: selecting a Linked Store in RoomForm now auto-sets and locks Platform to that store's platform (shown as an inherited badge); the manual Platform `<select>` only reappears when no store is linked. `room_type` (hotel / airbnb / other_max_pax) is **not** inherited the same way — there's no store-level equivalent column.
 
 - **2026-08-06 — Guest messaging feature (Twilio WhatsApp/SMS).** Full backend + admin UI
   built ahead of Twilio account creation: migration `guest_messaging_and_reviews`
