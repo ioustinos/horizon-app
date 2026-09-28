@@ -43,10 +43,11 @@ const PROVIDERS = {
 // Columns we need from the joined `stores` row for any provider.
 // Listing them explicitly keeps the SELECT consistent in both the cron and
 // the manual-trigger path.
-// How long a room that just failed to sync is left alone before retrying.
-const FAILURE_BACKOFF_MINUTES = 60;
-
 const STORE_FIELDS = 'api_key_name, api_key_secret, meal_plan_breakfast_values, bypass_meal_plan_check';
+
+// How long a room that just failed to sync is left alone before retrying.
+// Uses partial index idx_sync_logs_failed_started_at (added 2026-09-28).
+const FAILURE_BACKOFF_MINUTES = 60;
 
 export const handler = async () => {
   // Load settings
