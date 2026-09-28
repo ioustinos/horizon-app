@@ -47,9 +47,14 @@ import {
 
 const BASE_URL = 'https://api.loggia.net';
 
-// Module-level cache: `${store_id}:${fromIso}:${toIso}` → reservations[].
-// Survives within a warm Lambda container. Same pattern as Hotelizer.
+// Module-level cache: `${store_id}:${fromIso}:${toIso}` → { at, data | error }.
+// One sync run loops over every room of a store; this makes that ONE API call
+// per store per run instead of one per room. Failures are cached too (added
+// 2026-09-28): previously a failing store re-hit Loggia once per room, every
+// cron tick. TTL keeps a warm container from serving stale bookings (or a
+// stale error) into the next cron run.
 const reservationsCache = new Map();
+const RESERVATIONS_CACHE_TTL_MS = 4 * 60 * 1000;
 // Per-store cache: `${store_id}` → properties[]. Used for property name
 // hydration when bookings reference a property by id only.
 const propertiesCache = new Map();
@@ -71,11 +76,18 @@ export async function syncLoggia(room, { lookbackDays, forwardDays }) {
 
   try {
     const cacheKey = `${room.store_id}:${fromIso}:${toIso}`;
-    let allReservations = reservationsCache.get(cacheKey);
-    if (!allReservations) {
-      allReservations = await fetchBookingsList({ apiKey, pageId }, fromIso, toIso);
-      reservationsCache.set(cacheKey, allReservations);
+    let cached = reservationsCache.get(cacheKey);
+    if (cached && Date.now() - cached.at > RESERVATIONS_CACHE_TTL_MS) cached = null;
+    if (!cached) {
+      try {
+        cached = { at: Date.now(), data: await fetchBookingsList({ apiKey, pageId }, fromIso, toIso) };
+      } catch (e) {
+        cached = { at: Date.now(), error: e.message };
+      }
+      reservationsCache.set(cacheKey, cached);
     }
+    if (cached.error) throw new Error(cached.error);
+    const allReservations = cached.data;
 
     // Filter to this room. Match by property identifier — bookings expose
     // it under one of several common names depending on the endpoint.

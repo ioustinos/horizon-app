@@ -43,6 +43,9 @@ const PROVIDERS = {
 // Columns we need from the joined `stores` row for any provider.
 // Listing them explicitly keeps the SELECT consistent in both the cron and
 // the manual-trigger path.
+// How long a room that just failed to sync is left alone before retrying.
+const FAILURE_BACKOFF_MINUTES = 60;
+
 const STORE_FIELDS = 'api_key_name, api_key_secret, meal_plan_breakfast_values, bypass_meal_plan_check';
 
 export const handler = async () => {
@@ -62,15 +65,31 @@ export const handler = async () => {
 
   if (error) return { statusCode: 500, body: JSON.stringify({ error: error.message }) };
 
+  // Failure backoff. A failed sync never updates last_synced_at, so without
+  // this a broken room (bad creds, vendor 5xx) is retried on EVERY 5-min cron
+  // tick forever — 2026-09-28 we found ~13k failed calls in 3 days from one
+  // Loggia store + one HostHub store. Rooms whose most recent failure is
+  // younger than FAILURE_BACKOFF_MINUTES are skipped this tick. Manual
+  // force-sync bypasses this (it calls syncRoom directly).
+  const backoffCutoff = new Date(Date.now() - FAILURE_BACKOFF_MINUTES * 60 * 1000).toISOString();
+  const { data: recentFailures } = await supabase
+    .from('sync_logs')
+    .select('room_id')
+    .eq('status', 'failed')
+    .gte('started_at', backoffCutoff)
+    .limit(10000);
+  const backedOff = new Set((recentFailures || []).map(f => f.room_id));
+  const dueRooms = (rooms || []).filter(r => !backedOff.has(r.id));
+
   const results = [];
-  for (const room of (rooms || [])) {
+  for (const room of dueRooms) {
     const result = await syncRoom(room, { lookbackDays, forwardDays });
     results.push(result);
   }
 
   return {
     statusCode: 200,
-    body: JSON.stringify({ synced: results.length, results }),
+    body: JSON.stringify({ synced: results.length, skipped_backoff: (rooms || []).length - dueRooms.length, results }),
   };
 };
 
