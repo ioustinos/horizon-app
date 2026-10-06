@@ -29,7 +29,7 @@ export async function handler(event) {
     out.credentials_ok = true;
 
     const params = new URLSearchParams({
-      page_id: String(p), main_filter: 'all_properties',
+      page_id: String(p), main_filter: 'custom', limit: '50', offset: '0',
       date_from: from, date_to: to, date_year: from.slice(0,4),
       source_types: 'all',
     });

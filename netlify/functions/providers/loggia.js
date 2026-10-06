@@ -18,9 +18,17 @@
 //   Horizon room. platform_id = property id (we look for `id`, `property_id`,
 //   or `propertyId`, tolerant of shape variations).
 //
-// Sync: GET /api/lodge/bookings/list?page_id=X&main_filter=all_properties
+// Sync: GET /api/lodge/bookings/list?page_id=X&main_filter=custom
 //        &date_from=YYYY-MM-DD&date_to=YYYY-MM-DD&date_year=YYYY
-//        &source_types=all
+//        &source_types=all&limit=50&offset=N
+//   main_filter MUST be one of Loggia's accepted values (custom,
+//   bookings_in_year, arrivals, staying, departures, …). We originally sent
+//   'all_properties', which is NOT valid: small accounts (page 4634) happened
+//   to tolerate it, larger ones (Nilie, page 7461) got HTTP 500 on every call.
+//   Confirmed by Loggia support (Eftihis Vavourakis) 2026-10-01, who also
+//   asked us to paginate with limit/offset. A matching
+//   /api/lodge/bookings/count endpoint exists (same params) — unused for now;
+//   we page until a short/empty page instead.
 //   Returns reservations across all properties for the date window. No
 //   per-property server-side filter — we batch-and-cache per-store window
 //   (same pattern as Hotelizer / Cloudbeds), then client-side filter by
@@ -145,19 +153,40 @@ async function fetchPropertiesList({ apiKey, pageId }) {
   return extractArray(json);
 }
 
+const BOOKINGS_PAGE_SIZE = 50;   // Loggia's own example value
+const BOOKINGS_MAX_PAGES = 200;  // hard stop: 10,000 bookings per store/window
+
 async function fetchBookingsList({ apiKey, pageId }, fromIso, toIso) {
   const dateYear = String(fromIso.slice(0, 4));
-  const params = new URLSearchParams({
-    page_id:      String(pageId),
-    main_filter:  'all_properties',
-    date_from:    fromIso,
-    date_to:      toIso,
-    date_year:    dateYear,
-    source_types: 'all',
-  });
-  const url = `${BASE_URL}/api/lodge/bookings/list?${params.toString()}`;
-  const json = await loggiaGet(url, apiKey);
-  return extractArray(json);
+  const all = [];
+  const seen = new Set();
+  for (let page = 0; page < BOOKINGS_MAX_PAGES; page++) {
+    const params = new URLSearchParams({
+      page_id:      String(pageId),
+      main_filter:  'custom',
+      date_from:    fromIso,
+      date_to:      toIso,
+      date_year:    dateYear,
+      source_types: 'all',
+      limit:        String(BOOKINGS_PAGE_SIZE),
+      offset:       String(page * BOOKINGS_PAGE_SIZE),
+    });
+    const url = `${BASE_URL}/api/lodge/bookings/list?${params.toString()}`;
+    const rows = extractArray(await loggiaGet(url, apiKey));
+
+    // Guard against the API ignoring offset (would return page 1 forever):
+    // stop as soon as a page brings nothing we haven't already seen.
+    let added = 0;
+    for (const r of rows) {
+      const id = String(r.id ?? r.booking_id ?? r.bookingId ?? r.uuid ?? JSON.stringify(r));
+      if (seen.has(id)) continue;
+      seen.add(id);
+      all.push(r);
+      added++;
+    }
+    if (rows.length < BOOKINGS_PAGE_SIZE || added === 0) return all;
+  }
+  throw new Error(`Loggia pagination exceeded ${BOOKINGS_MAX_PAGES} pages for page_id ${pageId} — refusing partial sync`);
 }
 
 // Single GET wrapper with AbortController timeout, mirroring the cloudbeds
